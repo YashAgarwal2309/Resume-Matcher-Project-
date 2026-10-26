@@ -1,0 +1,20 @@
+# Python virtual environments
+venv/
+venv312/
+
+# Python cache files
+__pycache__/
+*.py[cod]
+
+# Environment variables and secrets
+.env
+.env.*
+
+# Mac system files
+.DS_Store
+
+# IDE settings
+.vscode/
+
+# Sensitive or unverified dataset
+Resume.csv
