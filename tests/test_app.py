@@ -166,3 +166,190 @@ def test_hybrid_needs_glove_and_says_so(app):
     click_match(app)  # hybrid is the default method; the fixture points GloVe at a missing file
     assert "not available" in app.error[0].value
     assert not app.dataframe
+
+
+# ---- Dashboard, comparison and shortlist
+
+REQUIRED_JOB = "Python developer. Required: Python, SQL, Django, Docker and AWS."
+
+
+def match_tfidf(at, files=None, job=REQUIRED_JOB):
+    upload(at, files or resume_files())
+    at.text_area(key="jd_text").input(job)
+    at.selectbox(key="method").select("tfidf")
+    click_match(at)
+    assert not at.exception and not at.error
+
+
+def compare_select(at):
+    return next(m for m in at.multiselect if m.key.startswith("compare_sel_"))
+
+
+def compare_button(at):
+    return next(b for b in at.button if b.label == "Compare Candidates")
+
+
+def downloads(at):
+    return [d.proto.label for d in at.get("download_button")]
+
+
+def shortlist_toggle(at, where, resume_id):
+    return next(t for t in at.toggle if t.key.startswith(f"sl_{where}_") and t.key.endswith(f"_{resume_id}"))
+
+
+def metrics(at):
+    return {m.label: m.value for m in at.metric}
+
+
+def test_header_shows_product_and_selected_algorithm(app):
+    text = " ".join(m.value for m in app.markdown)
+    assert "AI-Powered Recruitment Analytics" in text and "Hybrid" in text
+    app.selectbox(key="method").select("tfidf").run()
+    assert '<span class="name">TF-IDF</span>' in " ".join(m.value for m in app.markdown)
+
+
+def test_kpis_and_scores_come_from_the_backend(app):
+    from resume_matcher.comparison import DEFAULT_STRONG_THRESHOLDS
+    from resume_matcher.data_loader import corpus_from_files
+    from resume_matcher.matcher import TfidfMatcher
+
+    match_tfidf(app)
+    expected = TfidfMatcher(corpus_from_files([(n, d.decode()) for n, d, _ in resume_files()])).fit().match(
+        REQUIRED_JOB, top_k=5
+    )
+    table = app.dataframe[0].value
+    assert table["resume_id"].tolist() == expected["resume_id"].tolist()
+    assert table["score"].tolist() == expected["score"].tolist()  # same values as BaseMatcher.match
+    kpis = metrics(app)
+    assert kpis["Resumes processed"] == "5" and kpis["Candidates ranked"] == "5"
+    strong = int((expected["score"] >= DEFAULT_STRONG_THRESHOLDS["tfidf"]).sum())
+    assert kpis["Strong matches"] == str(strong)
+    assert kpis["Average similarity"] == f"{expected['score'].mean():.1f}"
+
+
+def test_strong_match_threshold_is_configurable(app):
+    match_tfidf(app)
+    app.number_input(key="threshold_tfidf").set_value(0.0).run()
+    assert metrics(app)["Strong matches"] == "5"
+    app.number_input(key="threshold_tfidf").set_value(100.0).run()
+    assert metrics(app)["Strong matches"] == "0"
+    assert app.dataframe[0].value["rank"].tolist() == [1, 2, 3, 4, 5]  # ranking unchanged
+
+
+def test_insights_tab_draws_charts_from_the_run(app):
+    match_tfidf(app)
+    assert len(app.get("vega_lite_chart")) == 4  # scores, distribution, requirements, coverage
+
+
+@pytest.mark.parametrize("count", [2, 3, 4, 5])
+def test_two_to_five_candidates_can_be_compared(app, count):
+    match_tfidf(app)
+    ranked = app.dataframe[0].value["resume_id"].tolist()
+    compare_select(app).set_value(ranked[:count]).run()
+    assert not compare_button(app).disabled
+    compare_button(app).click().run()
+    assert not app.exception
+    assert app.session_state["view"].endswith("Compare")  # the button opens the Compare tab
+    assert "Download Comparison CSV" in downloads(app) and "Download Skill Matrix CSV" in downloads(app)
+    assert downloads(app).count("Original file") == count
+    matrix = app.dataframe[1].value
+    assert len(matrix.columns) == count and matrix.index.tolist() == ["Python", "SQL", "Django", "Docker", "AWS"]
+    assert matrix.loc["Django", f"#1 {ranked[0]}"] == ("Found" if ranked[0] == "101.txt" else "Not found")
+
+
+def test_comparison_needs_at_least_two_candidates(app):
+    match_tfidf(app)
+    assert compare_button(app).disabled  # nothing selected yet
+    compare_select(app).set_value(["101.txt"]).run()
+    assert compare_button(app).disabled
+    assert any("Select 1 more candidate" in i.value for i in app.info)
+    assert "Download Comparison CSV" not in downloads(app)
+
+
+def test_more_than_five_candidates_are_capped(app):
+    match_tfidf(app, files=[*resume_files(), ("106.txt", b"Python SQL analyst", "text/plain")])
+    compare_select(app).set_value([f"{i}.txt" for i in range(101, 107)]).run()  # the browser stops at 5
+    assert len(compare_select(app).value) == 5
+    assert not compare_button(app).disabled
+
+
+def test_add_to_comparison_buttons_fill_the_selection(app):
+    match_tfidf(app)
+    for _ in range(2):
+        next(b for b in app.button if b.label == "Add to comparison").click().run()
+    assert len(compare_select(app).value) == 2
+    assert not compare_button(app).disabled
+
+
+def test_new_run_clears_stale_comparison(app):
+    match_tfidf(app)
+    old_key = compare_select(app).key
+    compare_select(app).set_value(["101.txt", "104.txt"]).run()
+    compare_button(app).click().run()
+    click_match(app)  # same inputs, but a new run replaces the results
+    assert compare_select(app).key != old_key and compare_select(app).value == []
+    assert old_key not in app.session_state
+    assert app.session_state["view"].endswith("Ranking")
+    assert "Download Comparison CSV" not in downloads(app)
+
+
+def test_shortlist_is_shown_filtered_and_shared_with_comparison(app):
+    match_tfidf(app)
+    shortlist_toggle(app, "rank", "103.txt").set_value(True).run()
+    table = app.dataframe[0].value.set_index("resume_id")
+    assert table.loc["103.txt", "shortlisted"] and not table.loc["101.txt", "shortlisted"]
+    app.button_group[0].set_value(["Shortlisted"]).run()
+    assert app.dataframe[0].value["resume_id"].tolist() == ["103.txt"]
+    app.button_group[0].set_value([]).run()
+    compare_select(app).set_value(["101.txt", "103.txt"]).run()
+    assert shortlist_toggle(app, "compare", "103.txt").value  # same shortlist in the comparison
+    shortlist_toggle(app, "compare", "103.txt").set_value(False).run()
+    assert not shortlist_toggle(app, "rank", "103.txt").value
+    assert not app.dataframe[0].value["shortlisted"].any()
+
+
+def test_shortlist_survives_a_rerun_but_not_new_uploads(app):
+    match_tfidf(app)
+    shortlist_toggle(app, "rank", "102.txt").set_value(True).run()
+    click_match(app)  # re-run with the same resumes and job description
+    assert shortlist_toggle(app, "rank", "102.txt").value
+    upload(app, resume_files()[:3])
+    match_tfidf(app, files=resume_files()[:3])
+    assert not shortlist_toggle(app, "rank", "102.txt").value
+
+
+def test_search_and_requirement_filters(app):
+    match_tfidf(app)
+    app.text_input(key="rank_search").input("104").run()
+    assert app.dataframe[0].value["resume_id"].tolist() == ["104.txt"]
+    app.text_input(key="rank_search").input("").run()
+    next(m for m in app.multiselect if m.key.startswith("rank_must_")).set_value(["Django"]).run()
+    assert app.dataframe[0].value["resume_id"].tolist() == ["101.txt"]
+    app.text_input(key="rank_search").input("nobody").run()
+    assert any("No candidates match" in i.value for i in app.info)
+
+
+def test_editing_the_job_marks_results_as_outdated(app):
+    match_tfidf(app)
+    assert not any("changed after this ranking" in i.value for i in app.info)
+    app.text_area(key="jd_text").input("Required: cooking").run()
+    assert any("changed after this ranking" in i.value for i in app.info)
+    assert app.dataframe  # still shown, clearly labelled, until Match Resumes is clicked again
+
+
+def test_duplicate_file_names_are_separate_candidates(app):
+    files = [("cv.txt", b"Python developer with Django and SQL", "text/plain"),
+             ("cv.txt", b"Head chef managing a kitchen", "text/plain")]
+    match_tfidf(app, files=files)
+    ids = app.dataframe[0].value["resume_id"].tolist()
+    assert sorted(ids) == ["cv.txt-0", "cv.txt-1"]
+    compare_select(app).set_value(ids).run()
+    assert downloads(app).count("Original file") == 2
+
+
+def test_uploaded_resumes_are_not_cached_on_disk():
+    import app as app_module
+    from resume_matcher.config import get_settings
+
+    assert get_settings().cache_dir is not None  # evaluate.py may cache the public datasets
+    assert app_module.matcher_settings(get_settings()).cache_dir is None  # the app never does

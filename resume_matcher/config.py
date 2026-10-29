@@ -45,6 +45,8 @@ METHOD_LABELS = {
     METHOD_SBERT: "Sentence-BERT Embeddings",
     METHOD_HYBRID: "Hybrid: TF-IDF + GloVe + Sentence-BERT",
 }
+# Short names for compact places (badges, chart labels, summary sentences).
+METHOD_SHORT = {METHOD_TFIDF: "TF-IDF", METHOD_GLOVE: "GloVe", METHOD_SBERT: "Sentence-BERT", METHOD_HYBRID: "Hybrid"}
 
 # Default Sentence-BERT model. bge-small-en-v1.5 is trained for search (short query vs. long document),
 # reads up to 512 word-pieces and is about the same size as all-MiniLM-L6-v2, which it replaced (README §13).

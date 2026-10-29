@@ -1,0 +1,87 @@
+/* Resume Matcher dashboard styles, on top of the theme in .streamlit/config.toml.
+   Containers created with st.container(key="...") get the CSS class "st-key-<key>",
+   which is what the card rules below target. Colours are defined once here. */
+
+:root {
+    --rm-ink: #0F172A;        /* headings and values */
+    --rm-ink-2: #334155;      /* body text */
+    --rm-muted: #64748B;      /* captions */
+    --rm-border: #E2E8F0;
+    --rm-surface: #FFFFFF;
+    --rm-blue: #2563EB;       /* primary actions, selected states */
+    --rm-blue-soft: #EFF4FF;
+    --rm-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 4px 16px rgba(15, 23, 42, 0.04);
+}
+
+.block-container {padding-top: 1.6rem; padding-bottom: 3rem; max-width: 1280px;}
+header[data-testid="stHeader"] {background: transparent;}
+
+/* ---- Header */
+.st-key-hero {
+    background: var(--rm-surface); border: 1px solid var(--rm-border); border-radius: 16px;
+    padding: 1.4rem 1.6rem 1.2rem; box-shadow: var(--rm-shadow);
+}
+.st-key-hero h1 {color: var(--rm-ink); font-size: 2rem; font-weight: 800; letter-spacing: -0.02em; padding: 0;}
+.subtitle {color: var(--rm-blue) !important; font-weight: 600; font-size: 1rem; margin: 0.1rem 0 0.45rem !important;}
+.lede {color: var(--rm-ink-2) !important; font-size: 0.95rem; margin: 0 !important; max-width: 46rem;}
+.algo {
+    border: 1px solid var(--rm-border); border-radius: 12px; padding: 0.8rem 1rem;
+    background: var(--rm-blue-soft);
+}
+.algo .label {display: block; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.08em;
+              text-transform: uppercase; color: var(--rm-muted);}
+.algo .name {display: block; font-size: 1.15rem; font-weight: 700; color: var(--rm-ink); margin: 0.15rem 0;}
+.algo .sub {display: block; font-size: 0.8rem; color: var(--rm-ink-2);}
+
+/* ---- Cards (every container whose key starts with "card") */
+[class*="st-key-card"] {background: var(--rm-surface); box-shadow: var(--rm-shadow);}
+.step {display: flex; align-items: center; gap: 0.7rem; margin-bottom: 0.25rem;}
+.step .num {flex: none; width: 1.75rem; height: 1.75rem; border-radius: 8px; background: var(--rm-blue-soft);
+            color: var(--rm-blue); display: flex; align-items: center; justify-content: center;
+            font-weight: 700; font-size: 0.9rem;}
+.step .title {font-weight: 700; font-size: 1rem; color: var(--rm-ink); line-height: 1.2;}
+.step .sub {font-size: 0.8rem; color: var(--rm-muted);}
+
+.section-title {font-size: 1.15rem; font-weight: 700; color: var(--rm-ink); margin: 0 !important;}
+.section-sub {font-size: 0.85rem; color: var(--rm-muted); margin: 0.1rem 0 0 !important;}
+
+/* ---- KPI tiles */
+[data-testid="stMetric"] {background: var(--rm-surface); box-shadow: var(--rm-shadow);}
+[data-testid="stMetricLabel"] p {color: var(--rm-muted); font-weight: 600;}
+[data-testid="stMetricValue"] {font-size: 1.6rem; font-weight: 700; color: var(--rm-ink);}
+
+/* ---- Tabs */
+.stTabs [data-baseweb="tab-list"] {gap: 0.4rem; border-bottom: 1px solid var(--rm-border);}
+.stTabs [data-baseweb="tab"] {font-weight: 600; padding: 0.55rem 0.9rem;}
+
+/* ---- Comparison cards */
+.cand-head {display: flex; align-items: center; gap: 0.55rem; margin-bottom: 0.2rem; min-width: 0;}
+.cand-rank {flex: none; font-size: 0.75rem; font-weight: 700; color: var(--rm-blue); background: var(--rm-blue-soft);
+            border-radius: 6px; padding: 0.12rem 0.45rem;}
+.cand-name {font-weight: 700; color: var(--rm-ink); overflow-wrap: anywhere;}
+.field-label {font-size: 0.72rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+              color: var(--rm-muted); margin: 0.6rem 0 0.15rem !important;}
+.na {color: var(--rm-muted); font-style: italic;}
+
+/* ---- Empty state before the first match */
+.empty {text-align: center; padding: 2.2rem 1rem; color: var(--rm-muted); border: 1.5px dashed #CBD5E1;
+        border-radius: 14px; background: var(--rm-surface);}
+.empty b {color: var(--rm-ink);}
+.empty ol {display: inline-block; text-align: left; margin: 0.8rem auto 0; color: var(--rm-ink-2);}
+
+/* ---- Sidebar (navy, see [theme.sidebar] in config.toml) */
+.side-title {font-size: 0.75rem; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase;
+             color: #93C5FD; margin: 0.6rem 0 0.4rem;}
+.method-row {display: flex; gap: 0.6rem; align-items: flex-start; margin-bottom: 0.7rem;}
+.method-row .dot {flex: none; width: 0.6rem; height: 0.6rem; border-radius: 50%; margin-top: 0.42rem;}
+.method-row .ok {background: #34D399; box-shadow: 0 0 0 3px rgba(52, 211, 153, 0.18);}
+.method-row .off {background: #64748B;}
+.method-row b {color: #FFFFFF; font-size: 0.9rem;}
+.method-row small {color: #A9B8D0; font-size: 0.78rem;}
+
+/* ---- Narrow screens */
+@media (max-width: 640px) {
+    .block-container {padding-left: 1rem; padding-right: 1rem;}
+    .st-key-hero {padding: 1.1rem 1.1rem 1rem;}
+    .st-key-hero h1 {font-size: 1.6rem;}
+}

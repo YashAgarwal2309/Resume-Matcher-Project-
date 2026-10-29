@@ -2,7 +2,8 @@
 
 Rank uploaded resumes against a job description using three NLP text-similarity techniques
 (**TF-IDF**, **GloVe** word embeddings and **Sentence-BERT**) plus a **Hybrid** that averages all
-three, through one shared interface and a Streamlit web app.
+three, through one shared interface and a Streamlit recruitment-analytics dashboard with KPIs,
+charts, a shortlist and side-by-side comparison of up to five candidates.
 
 ---
 
@@ -21,7 +22,8 @@ human reviewer can start with the most relevant ones.
 2. Implement three matching methods behind one interface:
    lexical (TF-IDF), averaged word embeddings (GloVe), and sentence embeddings (Sentence-BERT),
    plus a hybrid that averages the scores of all three.
-3. Provide a simple web app to upload resumes, enter a job description and view ranked resumes.
+3. Provide a web app to upload resumes, enter a job description, view ranked resumes, and compare and
+   shortlist candidates using evidence taken from the resumes.
 4. Compare the methods reproducibly on the same resumes and job descriptions.
 5. Handle missing data, models and packages without crashing or giving misleading results.
 
@@ -38,23 +40,31 @@ human reviewer can start with the most relevant ones.
 | GloVe average-embedding matching | ✅ Implemented (needs a ~134 MB download, see §10) |
 | Sentence-BERT matching (`BAAI/bge-small-en-v1.5`, configurable) | ✅ Implemented (model downloads on first use) |
 | Hybrid matching: equal average of TF-IDF, GloVe and Sentence-BERT (default in the app) | ✅ Implemented |
-| On-disk cache of Sentence-BERT resume embeddings | ✅ Implemented |
+| On-disk cache of Sentence-BERT embeddings for the evaluation datasets (never for uploaded resumes) | ✅ Implemented |
 | Clear "unavailable" status when GloVe/SBERT resources are missing | ✅ Implemented |
 | Streamlit app: upload several resumes (PDF/TXT/MD), one empty job-description box, method & top-K selectors | ✅ Implemented |
 | PDF text extraction for uploaded resumes (`pypdf`) | ✅ Implemented |
 | Ranked results table with similarity score and contact-masked preview | ✅ Implemented |
 | Per-resume card: job requirements *Included in Resume* / *Not Found in Resume* | ✅ Implemented |
 | CSV download of results | ✅ Implemented |
+| Dashboard KPIs: resumes processed, candidates ranked, strong matches (configurable threshold), average similarity | ✅ Implemented |
+| Charts from the current run: score by candidate, score distribution, requirements found, requirement coverage | ✅ Implemented |
+| Ranking search (file name or skill), sort (rank, score, requirements, name) and filters (shortlisted, strong, must mention) | ✅ Implemented |
+| Candidate comparison of 2–5 candidates from the same run: score bars, skills, experience/education quotes, keywords, resume text, original file | ✅ Implemented |
+| Candidate × requirement matrix and shared-skills view | ✅ Implemented |
+| Deterministic, evidence-based comparison summary (no LLM, no hiring recommendation) | ✅ Implemented |
+| Session-only shortlist with a "Shortlisted" filter | ✅ Implemented |
+| Comparison CSV and skill-matrix CSV export (UTF-8, quoted, formula-safe) | ✅ Implemented |
 | Evaluation script (timing + category-based Precision@K) | ✅ Implemented |
-| Automated tests (pytest, 106 tests, offline) | ✅ Implemented |
+| Automated tests (pytest, 194 tests, offline) | ✅ Implemented |
 | DOCX upload, OCR for scanned PDFs | ⏳ Not implemented |
 | Human-labelled relevance judgments | ⏳ Not available |
 
 ## 4. Technologies
 
 Python 3.13 (3.10+ should work), pandas, NumPy, scikit-learn (TF-IDF), pypdf (PDF text), pretrained GloVe vectors
-(`glove-wiki-gigaword-100`), sentence-transformers / PyTorch (Sentence-BERT), Streamlit (UI),
-pytest (tests).
+(`glove-wiki-gigaword-100`), sentence-transformers / PyTorch (Sentence-BERT), Streamlit (UI) with Altair
+charts (installed with Streamlit), pytest (tests).
 
 ## 5. System architecture
 
@@ -72,16 +82,18 @@ flowchart LR
     GLOVE[(models/glove-*.gz)] -.-> G
     HF[(Hugging Face model<br/>BAAI/bge-small-en-v1.5)] -.-> S
     T & G & S --> H[HybridMatcher<br/>average of TF-IDF, GloVe, SBERT]
-    S -.-> CACHE[(.cache/ embeddings)]
+    S -.-> CACHE[(.cache/ embeddings<br/>evaluation datasets only)]
 
     T & G & S & H --> M[BaseMatcher.match<br/>rank, top-K, 0-100 score, preview]
     JD[Job description] --> M
-    M --> APP[app.py<br/>Streamlit UI + CSV export]
+    M --> CMP[comparison.py<br/>requirements, evidence, KPIs,<br/>comparison, CSV exports]
+    CMP --> APP[app.py<br/>Streamlit dashboard]
     M --> EV[evaluate.py<br/>method comparison]
     CFG[config.py<br/>paths, model name, defaults] -.-> F & APP & EV
 ```
 
-Core logic lives in the `resume_matcher/` package and has no UI code. `app.py` (UI),
+Core logic lives in the `resume_matcher/` package and has no UI code; `comparison.py` builds the
+per-candidate view of one ranking without changing its scores. `app.py` (UI),
 `evaluate.py` (comparison) and `explore_data.py` (data analysis) only call into it.
 The app ranks resumes the user uploads; the two datasets are used by `evaluate.py` and `explore_data.py`.
 
@@ -119,7 +131,8 @@ typically 90+ for every resume because averaged word vectors are all fairly simi
 
 ```
 Resume-Matcher/
-├── app.py                        # Streamlit web app (UI only)
+├── app.py                        # Streamlit dashboard (UI and per-session state only)
+├── assets/app.css                # Dashboard styles (loaded by app.py)
 ├── evaluate.py                   # Compare methods: timing + category Precision@K
 ├── explore_data.py               # Dataset exploration (shape, nulls, categories, cleaning)
 ├── resume_matcher/               # Core logic (no UI)
@@ -127,8 +140,10 @@ Resume-Matcher/
 │   ├── data_loader.py            # CSV + uploaded-file (PDF/TXT/MD) loading, validation, de-duplication
 │   ├── preprocessing.py          # clean_text, tokenize, contact masking, previews
 │   ├── skills.py                 # Job-description requirements and which ones each resume mentions
-│   └── matcher.py                # TF-IDF / GloVe / SBERT matchers + create_matcher()
+│   ├── matcher.py                # TF-IDF / GloVe / SBERT matchers + create_matcher()
+│   └── comparison.py             # Candidate evidence, KPIs, filters, comparison, summary, CSV exports
 ├── tests/                        # pytest suite (synthetic fixtures, offline fakes)
+├── demo_samples/                 # One job description + seven fictional resumes (TXT, PDF, CSV)
 ├── data/
 │   ├── README.md                 # How to get both datasets
 │   └── sample_job_descriptions.json   # 16 hand-written tech job descriptions used by evaluate.py
@@ -138,7 +153,7 @@ Resume-Matcher/
 └── pytest.ini
 ```
 
-Generated and git-ignored: `.venv/`, `.cache/` (SBERT embeddings), `results/` (evaluation CSVs),
+Generated and git-ignored: `.venv/`, `.cache/` (SBERT embeddings of the evaluation datasets), `results/` (evaluation CSVs),
 `data/*.csv`, `models/*`.
 
 ## 9. Datasets
@@ -165,8 +180,8 @@ Any CSV with a resume-text column works for evaluation: `python evaluate.py --da
 **macOS / Linux**
 
 ```bash
-git clone https://github.com/soniraghav217-cmyk/Resume-Matcher.git
-cd Resume-Matcher
+git clone https://github.com/YashAgarwal2309/Resume-Matcher-Project-.git
+cd Resume-Matcher-Project-
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
@@ -175,14 +190,15 @@ pip install -r requirements.txt
 **Windows (PowerShell)**
 
 ```powershell
-git clone https://github.com/soniraghav217-cmyk/Resume-Matcher.git
-cd Resume-Matcher
+git clone https://github.com/YashAgarwal2309/Resume-Matcher-Project-.git
+cd Resume-Matcher-Project-
 py -m venv .venv
 .venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 ```
 
-Then add the dataset (see §9).
+The web app needs no dataset: it ranks the resumes you upload. The datasets (see §9) are only used by
+`evaluate.py` and `explore_data.py`.
 
 ### Optional: GloVe vectors (~134 MB)
 
@@ -200,8 +216,9 @@ Without the file, the app shows GloVe as unavailable.
 
 Installed by `requirements.txt`. The default model, `BAAI/bge-small-en-v1.5` (~130 MB), is downloaded from
 Hugging Face on first use and cached. The first SBERT run per dataset also encodes all resumes (measured: about
-8 s for 166 and 41 s for 2,481 resumes on an Apple-silicon laptop, plus the one-time model download), and the
-embeddings are saved to `.cache/` so later runs only load the model. The Hybrid method uses the same model
+8 s for 166 and 41 s for 2,481 resumes on an Apple-silicon laptop, plus the one-time model download), and
+`evaluate.py` saves the dataset embeddings to `.cache/` so later runs only load the model. The web app never
+writes embeddings of uploaded resumes to disk; it keeps them in the browser session's memory. The Hybrid method uses the same model
 (and also needs the GloVe file).
 To use a different model: `export SBERT_MODEL=all-MiniLM-L6-v2` (the previous default). To force CPU:
 `export SBERT_DEVICE=cpu`.
@@ -226,15 +243,64 @@ python evaluate.py            # compare all methods on every dataset (add --meth
 Auto-reload on file save is turned off in `.streamlit/config.toml` (it floods the console with
 harmless `torchvision` tracebacks once Sentence-BERT is loaded), so restart the app after editing code.
 
-**Demo flow:** upload the resumes (select several PDF/TXT/MD files at once), type or paste the job
-description into the empty box, choose an algorithm and top K (defaults to all uploaded resumes), click
-**Match Resumes**, review the ranked table, and download the CSV. Changing the uploaded files clears old results.
-Ready-made demo input: `demo_samples/` (one job description and seven sample resumes).
+**Demo flow:** paste the job description (the app lists the requirements it detects), upload the resumes
+(select several PDF/TXT/MD files at once), choose an algorithm and how many candidates to display (defaults to
+all uploaded resumes), and click **Match Resumes**. Ready-made demo input: `demo_samples/` (one job description
+and seven fictional resumes in `demo_samples/pdf/`).
+
+### Using the dashboard
+
+**Supported resume formats:** PDF with a text layer, TXT and MD, up to 5 MB each. DOCX and scanned PDFs
+(images only, no OCR) are not supported; unreadable or empty files are skipped with a message.
+
+**Scores.** Each ranked resume gets `score = max(0, cosine similarity) × 100` from the selected method
+(§7). It measures text similarity, not the chance of a good hire. Scores of different methods are on
+different scales, so compare candidates only within one run.
+
+**KPIs.** *Resumes processed* (readable uploads after duplicates are removed), *Candidates ranked* (top K),
+*Strong matches* (ranked resumes with a score at or above the strong-match threshold) and *Average
+similarity* (mean score of the ranked candidates). The threshold is set per method with the
+"Strong match ≥" button; defaults are TF-IDF 25, GloVe 90, Sentence-BERT 70 and Hybrid 60
+(`DEFAULT_STRONG_THRESHOLDS` in `resume_matcher/comparison.py`). They separate the three Data Science
+resumes in `demo_samples/` from the rest for every method; they are a starting point, not a calibrated
+cut-off. Changing the threshold never changes the ranking.
+
+**Ranking tab.** Search by file name or skill, sort by rank, score, requirements found or name, and filter
+to shortlisted candidates, strong matches, or resumes that mention chosen requirements. Each candidate's
+card shows the requirements found / not found, experience and degree phrases quoted from the resume (or
+*Not available*), keywords shared with the job description, and a contact-masked preview.
+
+**Insights tab.** Similarity score by candidate (with the threshold), score distribution, requirements
+found per resume, and how many resumes mention each requirement, all from the current run.
+
+**Compare tab.** Choose 2 to 5 candidates in *Candidates to compare* (or with *Add to comparison* on a
+card) and click **Compare Candidates**. All of them come from the same run, so they share one job
+description, one method and one score scale. You get a short summary that states its criteria (score,
+requirements found, shared and unique skills), one card per candidate (score bar, skills matched and not
+found, experience, education, keywords, parsed resume text and the original uploaded file), a score chart,
+a shared-skills panel and a candidate × requirement matrix. "Not found" means the resume text does not
+mention it; the candidate may still have that skill.
+
+**Shortlist.** Use the *Shortlisted* toggle on any card. A shortlist belongs to one set of uploaded resumes
+plus one job description: it survives re-running or switching the method, while different uploads or a
+different job description start a separate shortlist. It lives only in the browser session.
+
+**Exports.** *Download results as CSV* (the ranking, unchanged format), *Download Comparison CSV* (one row
+per compared candidate: candidate, rank, similarity score, method, requirements found, matched and
+unconfirmed skills, experience and education phrases, shortlist status) and *Download Skill Matrix CSV*
+(requirement × candidate, "found" / "not found"). Comparison exports are UTF-8 with a BOM so spreadsheet apps
+show accents correctly, quote commas, quotes and line breaks, and prefix cells that start with `=`, `+`, `-`
+or `@` with `'` so they are not run as formulas. They contain candidate information: store and share them
+carefully.
+
+**Stale results.** Uploading different resumes clears the results. Editing the job description, method or
+number of candidates keeps the old results on screen with a notice until **Match Resumes** is clicked again;
+every new run resets the comparison selection.
 
 ## 12. Testing
 
 ```bash
-python -m pytest            # 106 tests, run offline in about 1 s
+python -m pytest            # 194 tests, run offline in about 10 s
 ```
 
 The tests use tiny **synthetic** resumes (in `tests/conftest.py`), not the real dataset, plus fake
@@ -245,7 +311,12 @@ generated PDF), the dataset list, the
 evaluation script, score bounds, descending ranking, top-K limits, identical output columns across all
 matchers, the hybrid's weighting and fallback, the BGE query instruction, unavailable GloVe file, missing `sentence-transformers` package, a simulated model
 download failure, embedding caching, and the Streamlit UI (via `streamlit.testing.AppTest`: empty start,
-multi-file upload, unreadable files, results cleared when uploads change).
+multi-file upload, unreadable files, results cleared when uploads change). `tests/test_comparison.py` and the
+dashboard tests in `tests/test_app.py` cover selecting 2–5 candidates (and refusing 0, 1 or 6), duplicate file
+names, empty text, jobs without requirements, the evidence extraction, the summary, CSV escaping and
+formula-safety, scores shown equal to `BaseMatcher.match`, KPIs and the threshold, search and filters, the
+shortlist, the stale-results notice, a new run clearing the comparison, and that uploaded resumes are never
+cached on disk.
 
 ## 13. Evaluation
 
@@ -334,13 +405,25 @@ then Python, Business Analyst, Java, and HR last.
 - The tech dataset is small (166 unique resumes) and has no frontend, mobile or systems-programming category.
 - Phone masking in previews is heuristic (10+ digit sequences); unusual formats may not be masked.
 - Malformed CSV rows are skipped by pandas without a per-row count.
+- Experience is only shown when a resume states it ("4 years of experience"); it is never computed from dates.
+  Education shows degree mentions found by a pattern list (B.Tech, MBA, Master of ..., and so on); unusual
+  degree names are missed and PDF line breaks can add the institution to the quote.
+- The strong-match thresholds are heuristic defaults (see "Using the dashboard"), not validated cut-offs.
+- Shared keywords are plain word overlap with the job description and can include generic words.
+- The shortlist and comparison selection last only for the browser session; there is no saved history.
 
 ## 15. Privacy, fairness and responsible use
 
 - The datasets contain real (partly anonymized) resumes. They are git-ignored and must not be re-published.
 - Previews mask e-mail addresses, URLs and phone numbers; only the ID, category and a short preview are shown.
-- Uploaded resumes are only read as text (PDF text extraction or UTF-8 decoding). They are kept in memory for the
-  session, never executed or saved to disk, and are limited in type and size.
+- Uploaded resumes are only read as text (PDF text extraction or UTF-8 decoding). Their text, the matchers built
+  from them, the results and the shortlist are kept in the browser session's memory (`st.session_state`): they
+  are not shared with other users, not cached across sessions and never written to disk (the app does not use
+  the on-disk embedding cache). Only the public GloVe table and Sentence-BERT model are shared between sessions.
+- Comparison exports contain file names, skills and short experience/education quotes, but no full resume
+  text or contact details. They are still candidate data; handle them confidentially.
+- The comparison summary is deterministic and uses only scores and requirement matches. It does not rate
+  people, infer personal characteristics or recommend a hire.
 - Text similarity can reproduce biases in wording, such as gendered language, school names or employment gaps,
   and the pretrained embeddings carry biases from their training data. **Use rankings to support human
   review, never to reject candidates automatically.**
@@ -353,6 +436,7 @@ then Python, Business Analyst, Java, and HR last.
 - DOCX support and OCR for scanned PDF resumes.
 - A small human-labelled relevance set to compute real Precision/Recall/nDCG.
 - Bias auditing (for example score distributions across categories).
+- An optional, consent-based way to save shortlists between sessions.
 
 ## History
 
