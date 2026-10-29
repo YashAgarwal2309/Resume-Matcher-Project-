@@ -18,3 +18,37 @@ __pycache__/
 
 # Sensitive or unverified dataset
 Resume.csv
+
+# --- Added for Milestone 3 ---
+
+# More virtual environments / test cache
+.venv/
+env/
+.pytest_cache/
+
+# Dataset copies anywhere under data/ (see data/README.md)
+data/*.csv
+
+# Pretrained models (large downloads; see README)
+models/*
+!models/.gitkeep
+
+# Generated files (Sentence-BERT embedding cache, evaluation output)
+.cache/
+results/
+
+# Other IDEs
+.idea/
+
+# --- Added before GitHub upload ---
+
+# Streamlit secrets and other credential files
+.streamlit/secrets.toml
+*.pem
+*.key
+credentials*.json
+
+# Linter cache, logs, Windows junk
+.ruff_cache/
+*.log
+Thumbs.db

@@ -1,0 +1,49 @@
+Mohammed Faizan Ansari
+Java Developer
+Pune, Maharashtra | faizan.ansari@example.com | +91 88XXX XX492
+
+SUMMARY
+Java developer with 3 years of experience building Spring Boot microservices for banking and insurance applications. Good with REST APIs, Hibernate, MySQL and writing proper unit tests. Looking for a role where I can work on larger distributed systems.
+
+TECHNICAL SKILLS
+Core: Java 8/11/17, OOP, Collections, Multithreading
+Frameworks: Spring Boot, Spring MVC, Spring Security, Hibernate/JPA
+Databases: MySQL, Oracle, MongoDB
+Messaging and Tools: Kafka, Maven, Git, Jenkins, Docker, SonarQube, IntelliJ IDEA, Postman
+Testing: JUnit 5, Mockito
+Frontend (basic): HTML, CSS, Angular
+
+EXPERIENCE
+Software Developer | Ferncrest Technologies, Pune | Aug 2022 - Present
+Client: A private sector bank (loan origination platform)
+- Developing Spring Boot microservices for loan applications, document upload and eligibility checks.
+- Wrote REST APIs used by the Angular web portal and the bank's mobile app.
+- Used Kafka to publish application status events to the notification service.
+- Sped up the eligibility check by adding indexes and rewriting JPA queries. Response time went from about 4 seconds to under 1 second.
+- Keep unit test coverage around 80% with JUnit and Mockito and fix SonarQube issues before each release.
+- Part of sprint planning, daily stand-ups and the production support rotation.
+
+Associate Software Engineer | Ferncrest Technologies, Pune | Jul 2021 - Jul 2022
+Client: An insurance company (policy servicing portal)
+- Worked on the policy renewal and endorsement modules using Spring MVC and Hibernate.
+- Wrote Oracle stored procedures for premium calculation reports.
+- Fixed defects raised by QA and supported the client during UAT.
+- Learnt the codebase quickly and took over a module from a senior developer within 4 months.
+
+PROJECTS
+Online Bus Reservation System (academic) - Java, JSP, Servlets and MySQL. Seat selection, booking and cancellation with email confirmation.
+Chat Application (personal) - Spring Boot with WebSockets and a simple HTML front end, built to understand real-time messaging.
+
+EDUCATION
+B.E., Computer Engineering | Savitribai Phule Pune University | 2017 - 2021 | First Class with Distinction (CGPA 8.1)
+HSC | Abeda Inamdar Junior College, Pune | 2017 | 78%
+
+CERTIFICATIONS
+Oracle Certified Associate, Java SE 8 Programmer
+Spring Boot Microservices with Spring Cloud, Udemy
+
+LANGUAGES
+English, Hindi, Urdu, Marathi
+
+HOBBIES
+Football on weekends, following tech YouTube channels, cooking biryani for friends

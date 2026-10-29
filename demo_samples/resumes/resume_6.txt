@@ -1,0 +1,42 @@
+Sneha Kulkarni
+Machine Learning Engineer
+Mumbai, Maharashtra | sneha.kulkarni@example.com | +91 70XXX XX815
+
+OBJECTIVE
+Machine learning engineer with about one and a half years of industry experience in NLP and classical ML. Looking for a data scientist role where I can work on the full model lifecycle, from data cleaning to deployment.
+
+EDUCATION
+B.Tech, Computer Engineering | Veermata Jijabai Technological Institute (VJTI), Mumbai | 2019 - 2023 | CGPA 8.9/10
+Relevant courses: Machine Learning, Data Mining, Probability and Statistics, Natural Language Processing, DBMS
+
+EXPERIENCE
+Machine Learning Engineer | Talkwise AI, Mumbai | Aug 2023 - Present
+- Building intent classification models for a customer support chatbot in English and Hinglish. Started with a TF-IDF + logistic regression baseline, then fine-tuned DistilBERT in TensorFlow/Keras, which took macro F1 from 0.74 to 0.86.
+- Wrote data cleaning scripts in pandas for chat transcripts: masking personal details, normalising Hinglish spellings and removing duplicates.
+- Built an FAQ search using sentence embeddings and cosine similarity. It is used as a fallback when the intent model is not confident.
+- Track experiments in MLflow and write a short evaluation note (confusion matrix, error examples) for every model release.
+- Package models with FastAPI and Docker for the backend team.
+
+Data Science Intern | Ridgeway Insurance Brokers, Mumbai | Jan 2023 - Jun 2023
+- Built a claim fraud classification model with random forest and gradient boosting in scikit-learn. Handled class imbalance with SMOTE and class weights.
+- Did feature engineering on claim history and policy data and explained the model to the claims team using SHAP plots.
+- Wrote SQL queries to pull claims data from MySQL.
+
+PROJECTS
+Fake News Detection (final year project) - Compared Naive Bayes, logistic regression and an LSTM on a Kaggle news dataset. The LSTM had the best recall. Built a small Streamlit demo for the viva.
+Mumbai AQI Forecasting - Regression with weather and traffic features. Mostly learnt how to split train and test data correctly for time series.
+Movie Recommender - Collaborative filtering on the MovieLens dataset using NumPy and the Surprise library.
+
+SKILLS
+Programming: Python, SQL, C++ (for DSA)
+Libraries: pandas, NumPy, scikit-learn, TensorFlow, Keras, Hugging Face Transformers, NLTK, Matplotlib, Seaborn
+Concepts: classification, regression, clustering, feature engineering, model evaluation, NLP, deep learning
+Tools: Git, Docker, MLflow, FastAPI, Streamlit, Google Colab
+
+ACHIEVEMENTS AND ACTIVITIES
+- Top 10% in a Kaggle Playground competition (tabular classification), 2022.
+- Core member of the VJTI Data Science Club. Took a pandas workshop for first-year students.
+- Smart India Hackathon 2022 finalist.
+
+LANGUAGES
+English, Marathi, Hindi

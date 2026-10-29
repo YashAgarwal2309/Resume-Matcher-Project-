@@ -1,0 +1,40 @@
+Siddharth Rao
+Senior Data Scientist
+Hyderabad, Telangana | siddharth.rao@example.com | +91 97XXX XX031
+
+ABOUT
+I have spent the last six years on machine learning problems, mostly NLP and recommendation systems. I like taking a fuzzy business question, turning it into something measurable, and shipping a model that people actually use. Currently leading a team of four data scientists.
+
+EXPERIENCE
+Senior Data Scientist | Lumen Health Analytics, Hyderabad | Jan 2022 - Present
+- Lead a team of 4 working on clinical text. We built an NLP pipeline that extracts diagnoses and medications from discharge summaries using spaCy and a fine-tuned BERT model (Hugging Face Transformers on TensorFlow).
+- Set up the evaluation process for the team: labelled test sets, per-entity precision and recall, and an error review with the clinical team every sprint.
+- Built a readmission risk model (XGBoost) with about 120 engineered features from claims and visit data. Two hospital partners use it to prioritise follow-up calls.
+- Worked with data engineering to move training data from ad-hoc SQL extracts to versioned tables in Snowflake.
+- Interview candidates and run an internal reading group on ML papers.
+
+Data Scientist | Quickcart Commerce, Bengaluru | Jun 2019 - Dec 2021
+- Built product recommendation models for the home page, first matrix factorisation and later a two-tower model in Keras. Ran the A/B tests with the product team.
+- Created a demand forecasting model for 2,000+ SKUs using LightGBM with holiday and promotion features.
+- Clustered customers by purchase behaviour (K-Means, DBSCAN) to support pricing experiments.
+- Wrote shared feature engineering code in pandas and NumPy that other analysts started reusing.
+
+Analyst - Data Science | Infotrail Consulting, Hyderabad | Jul 2017 - May 2019
+- Built regression and classification models for marketing clients (response models, customer lifetime value).
+- Cleaned and joined large survey and CRM datasets using SQL and Python.
+
+SKILLS
+Python, SQL, pandas, NumPy, scikit-learn, XGBoost, LightGBM, TensorFlow, Keras, PyTorch (basic), Hugging Face Transformers, spaCy, NLTK, MLflow, Docker, Git, Snowflake, AWS (SageMaker, S3, Lambda)
+Techniques: supervised learning, clustering, NLP (NER, text classification, embeddings), recommender systems, time series forecasting, feature engineering, experiment design, model evaluation
+
+EDUCATION
+M.Tech, Computer Science | IIIT Hyderabad | 2015 - 2017
+Thesis: Topic modelling of Telugu news articles using LDA.
+B.E., Computer Science | Osmania University, Hyderabad | 2011 - 2015
+
+TALKS AND WRITING
+- Talk on lessons from deploying clinical NER at a local Python meetup, 2023.
+- Co-author of a short workshop paper on Telugu topic modelling, 2017.
+
+INTERESTS
+Long-distance running (two half marathons so far), Carnatic music, teaching my nephew Python.

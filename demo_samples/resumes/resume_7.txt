@@ -1,0 +1,40 @@
+Aditya Verma
+Business Analyst
+Gurugram, Haryana | aditya.verma@example.com | +91 96XXX XX127
+
+PROFESSIONAL SUMMARY
+Business analyst with 4 years of experience in IT services and SaaS, working between business stakeholders and development teams. I write BRDs and user stories, run requirement workshops, and know enough SQL and Power BI to answer most questions without waiting for the data team.
+
+CORE SKILLS
+Requirement gathering, BRD and FRD writing, user stories and acceptance criteria, process mapping (BPMN, Visio), gap analysis, UAT, Agile/Scrum, stakeholder management, SQL, Power BI, advanced Excel, Jira, Confluence
+
+EXPERIENCE
+Business Analyst | Tessellate Software Pvt. Ltd., Gurugram | Sep 2021 - Present
+- BA for an HR and payroll SaaS product used by mid-size companies. I own the leave and attendance modules.
+- Run requirement workshops with client HR teams and turn them into user stories with acceptance criteria in Jira.
+- Created as-is and to-be process maps for the attendance regularisation flow. Support tickets for that flow dropped noticeably after the release.
+- Write SQL queries on the reporting database to confirm data issues before raising defects.
+- Built Power BI dashboards for product managers showing feature usage and ticket trends.
+- Plan and coordinate UAT with clients, and track defects and sign-offs.
+
+Associate Business Analyst | Meridian IT Services, Noida | Jul 2020 - Aug 2021
+- Supported the senior BA on a warehouse management system implementation for a retail client.
+- Documented FRDs, prepared wireframes in Balsamiq and maintained the requirement traceability matrix.
+- Prepared weekly status reports and minutes of meetings for the client.
+- Sat with warehouse supervisors for a week to document how goods receiving actually worked on the floor.
+
+EDUCATION
+MBA (Information Technology and Marketing) | Symbiosis Institute of Computer Studies and Research, Pune | 2018 - 2020
+BCA | Guru Gobind Singh Indraprastha University, Delhi | 2015 - 2018
+
+CERTIFICATIONS
+ECBA (Entry Certificate in Business Analysis), IIBA, 2021
+Certified Scrum Product Owner (CSPO), 2022
+Microsoft Power BI Data Analyst (PL-300), 2023
+
+ACHIEVEMENTS
+- Client Champion award at Tessellate for handling the go-live of a 3,000-employee client.
+- Trained two new BAs on writing user stories and running UAT.
+
+INTERESTS
+Football, product management podcasts, cooking on weekends

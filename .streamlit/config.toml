@@ -1,0 +1,31 @@
+[server]
+# Each uploaded resume may be up to 5 MB (matches MAX_RESUME_BYTES in resume_matcher/config.py).
+maxUploadSize = 5
+# Streamlit's file watcher scans every imported module; with Sentence-BERT loaded it trips over
+# optional transformers image modules and logs hundreds of harmless "No module named 'torchvision'"
+# tracebacks. Turning it off keeps the console clean (restart the app after editing code).
+fileWatcherType = "none"
+
+[browser]
+gatherUsageStats = false
+
+[client]
+# Hide the "Deploy" button and developer menu; this is an end-user app.
+toolbarMode = "minimal"
+
+# Look and feel: light, clean main area with a navy sidebar (same colours as the slide deck).
+[theme]
+base = "light"
+primaryColor = "#2563EB"
+backgroundColor = "#F5F7FB"
+secondaryBackgroundColor = "#EEF2F8"
+textColor = "#0F172A"
+borderColor = "#E2E8F0"
+baseRadius = "0.75rem"
+font = "Inter:https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+
+[theme.sidebar]
+backgroundColor = "#0A1226"
+secondaryBackgroundColor = "#13213F"
+textColor = "#E2E8F0"
+borderColor = "#24365A"

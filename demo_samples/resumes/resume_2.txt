@@ -1,0 +1,45 @@
+Nikhil Bansal
+Python Developer
+Noida, Uttar Pradesh | nikhil.bansal@example.com | +91 99XXX XX708
+
+PROFESSIONAL SUMMARY
+Backend developer with 4 years of experience in Python and Django. I have mostly worked on REST APIs for e-commerce and logistics platforms, along with the database design, background jobs and deployments that come with them. Comfortable owning a module end to end and working directly with the frontend and QA teams.
+
+TECHNICAL SKILLS
+Languages: Python, SQL, JavaScript (basic)
+Frameworks: Django, Django REST Framework, Flask, FastAPI (learning)
+Databases: PostgreSQL, MySQL, Redis, MongoDB (basic)
+Tools: Git, Docker, Celery, RabbitMQ, Nginx, Jenkins, Postman, Jira
+Cloud: AWS EC2, S3, RDS
+
+WORK EXPERIENCE
+Software Engineer - Backend | Nimbus Logistics Tech, Noida | Mar 2022 - Present
+- Develop and maintain the shipment tracking APIs (Django REST Framework) used by our mobile app and around 300 warehouse partners.
+- Designed the PostgreSQL schema for the new returns module and wrote the scripts to migrate two years of old data.
+- Moved slow report generation to Celery workers with Redis, so the dashboard no longer times out at month end.
+- Integrated two courier partner APIs and added retry and backoff handling for their webhooks.
+- Write unit tests with pytest and review pull requests for a backend team of 6.
+
+Python Developer | Craftbox Solutions, Gurugram | Jul 2020 - Feb 2022
+- Built REST APIs for an online furniture store: product catalogue, cart, coupons and Razorpay payment integration.
+- Customised the Django admin panel for the operations team (bulk actions, filters, CSV export).
+- Wrote small pandas scripts to clean vendor product sheets before bulk upload.
+- Fixed production bugs reported by customers and sped up slow pages using select_related, prefetch_related and proper indexes.
+- Set up the first Jenkins pipeline for the project to run tests on every merge.
+
+PROJECTS
+Expense Splitter - Django + React side project to split trip expenses among friends. Deployed on an EC2 free tier instance with Nginx and Gunicorn.
+Library Management System - College project in Django with book issue/return tracking and automatic fine calculation.
+
+EDUCATION
+B.Tech, Information Technology | Amity University, Noida | 2016 - 2020 | CGPA 7.6
+Class XII (CBSE) | Delhi Public School, Ghaziabad | 2016 | 86%
+
+ACHIEVEMENTS
+- Got the Star Performer award for Q3 2023 at Nimbus Logistics Tech.
+- Solved 400+ problems on LeetCode and HackerRank in Python.
+- Gave an internal talk on Django ORM performance to the engineering team.
+
+PERSONAL DETAILS
+Languages: Hindi, English
+Hobbies: Cricket, trekking in Uttarakhand, reading engineering blogs

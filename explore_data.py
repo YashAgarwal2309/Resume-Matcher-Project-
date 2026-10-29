@@ -1,87 +1,68 @@
+"""Exploratory analysis of the resume dataset.
+
+Prints the dataset's shape, columns, missing values, duplicates, category
+distribution, text-length statistics and a before/after look at cleaning.
+
+The TF-IDF / GloVe / Sentence-BERT experiments that used to live at the end of
+this script are now in matcher.py (implementation) and evaluate.py (comparison).
+
+Usage:
+    python explore_data.py               # uses data/Resume.csv (or RESUME_DATA_PATH)
+    python explore_data.py path/to/Resume.csv
+"""
+
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
 import pandas as pd
-df = pd.read_csv('Resume.csv')
-print(df.shape)
-print(df.columns)
-print(df[['Resume_str', 'Category']].head())
 
-import re
-
-def clean_text(text):
-    text = text.lower()
-    text = re.sub(r'[^a-z0-9\s]', ' ', text)  # strip punctuation/special characters
-    text = re.sub(r'\s+', ' ', text).strip()   # collapse multiple spaces/newlines into one
-    return text
-
-df['clean_resume'] = df['Resume_str'].apply(clean_text)
-print(df[['Resume_str', 'clean_resume']].head())
-
-print(df['Category'].unique())
-
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
-
-# Write one short job description per category — 2-3 sentences, realistic posting language
-job_descriptions = {
-    "HR": "Looking for an HR specialist to manage recruitment, employee relations, and HR operations. Experience with onboarding and policy development required.",
-    "INFORMATION-TECHNOLOGY": "Seeking a software engineer skilled in Python, databases, and system design. Experience building and maintaining applications required.",
-    "SALES": "Sales representative needed to manage client relationships and meet revenue targets. Strong communication and negotiation skills required.",
-    # add 2-3 more matching categories from your printout
-}
-
-# Vectorize: fit on cleaned resumes, transform both resumes and job descriptions into the same vector space
-vectorizer = TfidfVectorizer(stop_words='english')
-resume_vectors = vectorizer.fit_transform(df['clean_resume'])
-job_vectors = vectorizer.transform(list(job_descriptions.values()))
-
-# Score every job description against every resume
-similarity_matrix = cosine_similarity(job_vectors, resume_vectors)
-
-# For each job, show the top matching resume's actual category
-for i, job_category in enumerate(job_descriptions.keys()):
-    best_match_idx = similarity_matrix[i].argmax()
-    predicted_category = df.iloc[best_match_idx]['Category']
-    score = similarity_matrix[i][best_match_idx]
-    print(f"Job: {job_category} -> Best match category: {predicted_category} (score: {score:.3f})")
+from resume_matcher.config import get_settings
+from resume_matcher.data_loader import DatasetError, detect_columns, load_resumes
 
 
-import gensim.downloader as api
-import numpy as np
+def explore(path: Path) -> None:
+    corpus = load_resumes(path)  # validates the file first, with a friendly error
+    raw = pd.read_csv(path, on_bad_lines="skip")
+    print(f"File: {path}")
+    print(f"Raw shape: {raw.shape}")
+    print(f"Columns: {list(raw.columns)}")
 
-# Downloads a pretrained GloVe model (~128MB, one-time download)
-word_vectors = api.load('glove-wiki-gigaword-100')
+    text_col, category_col, id_col = detect_columns(raw)
+    print(f"Detected columns -> text: {text_col}, category: {category_col}, id: {id_col}")
+    print("\nMissing values per column:")
+    print(raw.isna().sum().to_string())
+    print(f"\nExact duplicate resume texts (raw): {raw[text_col].duplicated().sum()}")
 
-def get_average_vector(text, model, vector_size=100):
-    words = text.split()
-    vectors = [model[word] for word in words if word in model]
-    if len(vectors) == 0:
-        return np.zeros(vector_size)
-    return np.mean(vectors, axis=0)
+    df = corpus.df
+    print(f"\nAfter cleaning: {len(df)} resumes. Stats: {corpus.stats}")
 
-resume_vectors_w2v = np.array([get_average_vector(t, word_vectors) for t in df['clean_resume']])
-job_vectors_w2v = np.array([get_average_vector(t, word_vectors) for t in job_descriptions.values()])
+    if corpus.has_categories:
+        counts = df["category"].value_counts()
+        print(f"\n{len(counts)} categories:")
+        print(counts.to_string())
 
-similarity_matrix_w2v = cosine_similarity(job_vectors_w2v, resume_vectors_w2v)
+    words = df["clean_text"].str.split().str.len()
+    print("\nWords per cleaned resume:")
+    print(words.describe().round(1).to_string())
 
-for i, job_category in enumerate(job_descriptions.keys()):
-    best_match_idx = similarity_matrix_w2v[i].argmax()
-    predicted_category = df.iloc[best_match_idx]['Category']
-    score = similarity_matrix_w2v[i][best_match_idx]
-    print(f"Job: {job_category} -> Best match category: {predicted_category} (score: {score:.3f})")
+    print("\nCleaning example (first 200 characters):")
+    for _, row in df.head(3).iterrows():
+        print(f"- [{row['resume_id']}] original: {row['text'][:200]!r}")
+        print(f"  {'':>{len(str(row['resume_id'])) + 2}} cleaned:  {row['clean_text'][:200]!r}")
 
 
-from sentence_transformers import SentenceTransformer
+def main() -> int:
+    path = Path(sys.argv[1]) if len(sys.argv) > 1 else get_settings().dataset_path
+    pd.set_option("display.width", 160)
+    try:
+        explore(path)
+    except (DatasetError, FileNotFoundError) as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 1
+    return 0
 
-# Load a pretrained Sentence-BERT model — small, fast on CPU, widely used in real semantic search systems
-sbert_model = SentenceTransformer('all-MiniLM-L6-v2')
 
-# Encode resumes and job descriptions into full-sentence embeddings (not word-by-word averaging)
-resume_vectors_sbert = sbert_model.encode(df['clean_resume'].tolist(), show_progress_bar=True)
-job_vectors_sbert = sbert_model.encode(list(job_descriptions.values()), show_progress_bar=True)
-
-similarity_matrix_sbert = cosine_similarity(job_vectors_sbert, resume_vectors_sbert)
-
-for i, job_category in enumerate(job_descriptions.keys()):
-    best_match_idx = similarity_matrix_sbert[i].argmax()
-    predicted_category = df.iloc[best_match_idx]['Category']
-    score = similarity_matrix_sbert[i][best_match_idx]
-    print(f"Job: {job_category} -> Best match category: {predicted_category} (score: {score:.3f})")
+if __name__ == "__main__":
+    sys.exit(main())

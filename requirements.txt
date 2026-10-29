@@ -1,0 +1,19 @@
+# Resume Matcher dependencies (Python 3.10+; developed on Python 3.13).
+# Tested with: pandas 3.1.0, numpy 2.5.4, scikit-learn 1.9.1, streamlit 1.66.1,
+# sentence-transformers 6.2.0 (torch 2.14.1), pytest 9.1.1.
+# The TF-IDF pipeline and app were also checked with pandas 2.2.3, numpy 2.4.2,
+# scikit-learn 1.6.1 and streamlit 1.49.0.
+
+# Core (data loading, TF-IDF, GloVe, web app)
+pandas>=2.2,<4
+numpy>=1.26,<3
+scikit-learn>=1.4,<2
+streamlit>=1.49,<2
+pypdf>=5,<7          # reads uploaded PDF resumes (tested with 6.21.2)
+
+# Sentence-BERT (optional: the app reports it as unavailable if this is not installed).
+# Installs PyTorch (several hundred MB). Only version 6.x has been tested.
+sentence-transformers>=6,<7
+
+# Tests
+pytest>=8

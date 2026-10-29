@@ -1,0 +1,42 @@
+Ananya Iyer
+Data Scientist
+Bengaluru, Karnataka | ananya.iyer@example.com | +91 98XXX XX214
+
+SUMMARY
+Data scientist with a little over 3 years of experience building and maintaining machine learning models for retail and lending products. Most of my work is in Python (pandas, scikit-learn) and SQL, from pulling raw data to getting a model into production and checking it still behaves after release. I enjoy the messy middle part of the job, cleaning data and figuring out which features actually matter.
+
+EXPERIENCE
+Data Scientist | Brightleaf Analytics Pvt. Ltd., Bengaluru | Jul 2023 - Present
+- Built a customer churn model (gradient boosting in scikit-learn) for a grocery delivery client. The retention team uses its weekly list to decide who gets offers.
+- Rewrote the feature pipeline for the churn model in pandas, adding order-gap and basket-size features. AUC on the hold-out month went from 0.71 to 0.78.
+- Did customer segmentation with K-Means on RFM features for the marketing team and put the segments in a Tableau dashboard they still use.
+- Set up monthly model evaluation reports (precision/recall by segment, calibration plots) that also flag data drift.
+- Mentor two junior analysts on Git, code reviews and writing SQL that doesn't time out.
+
+Junior Data Scientist | Kavach Fintech, Pune | Aug 2021 - Jun 2023
+- Worked on a credit risk scorecard using logistic regression with the risk team. Handled missing bureau data, WOE binning and reject inference.
+- Built a small text classifier (TF-IDF + linear SVM) to route customer support emails into 9 categories, which removed most of the manual tagging.
+- Wrote most of the SQL (PostgreSQL) for the monthly portfolio reports and moved them from Excel to a scheduled Python job.
+- Deployed two models as Flask APIs in Docker with help from the backend team.
+
+SKILLS
+Languages: Python, SQL, basic R
+ML / Data: pandas, NumPy, scikit-learn, XGBoost, statsmodels, TensorFlow/Keras (basic), NLTK
+Methods: regression, classification, clustering, feature engineering, model evaluation, A/B testing
+Tools: Jupyter, Git, Docker, Airflow, Tableau, AWS S3 and SageMaker
+
+PROJECTS
+Product review sentiment (personal) - Trained a small LSTM in Keras on about 40k product reviews, mainly to understand word embeddings and sequence padding properly.
+Bengaluru house prices - Regression with feature engineering on location and built-up area. Wrote a short blog post about a target leakage mistake I made in the first version.
+
+EDUCATION
+B.Tech, Computer Science and Engineering | PES University, Bengaluru | 2017 - 2021
+CGPA 8.4/10. Final year project on handwritten Kannada digit recognition using CNNs.
+
+CERTIFICATIONS
+Machine Learning Specialization, Coursera (2022)
+AWS Certified Cloud Practitioner (2023)
+
+OTHER
+Languages: English, Tamil, Kannada, Hindi
+Volunteer at a weekend coding club for school students. Play badminton most evenings.

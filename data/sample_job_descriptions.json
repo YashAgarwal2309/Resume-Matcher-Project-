@@ -1,0 +1,85 @@
+{
+  "_note": "Hand-written sample job descriptions for demos and evaluation. They are NOT records from any resume dataset. 'relevant_categories' lists dataset categories (from either UpdatedResumeDataSet.csv or Resume.csv) treated as a weak relevance label by evaluate.py; it is empty when neither dataset has a category that clearly fits the role.",
+  "jobs": [
+    {
+      "title": "SDE - Software Development Engineer",
+      "relevant_categories": ["Java Developer", "Python Developer", "DotNet Developer", "INFORMATION-TECHNOLOGY"],
+      "text": "We are hiring a Software Development Engineer to design, build and maintain scalable services. Strong skills in Java or Python, data structures and algorithms, object-oriented design, SQL databases, Git and unit testing are required. Experience with REST APIs, microservices and agile development is a plus."
+    },
+    {
+      "title": "SWE - Software Engineer",
+      "relevant_categories": ["Java Developer", "Python Developer", "DotNet Developer", "INFORMATION-TECHNOLOGY"],
+      "text": "Software Engineer needed to write clean, well-tested code across the software development life cycle. You will gather requirements, design modules, debug production issues and do code reviews. Proficiency in Java, C++ or Python, Linux, version control with Git and relational databases is required."
+    },
+    {
+      "title": "Application Developer",
+      "relevant_categories": ["Java Developer", "DotNet Developer", "Python Developer", "INFORMATION-TECHNOLOGY"],
+      "text": "Application Developer to develop and enhance business applications using Java/J2EE or C# .NET. Responsibilities include building web forms and services, writing SQL queries and stored procedures, fixing defects and supporting users. Knowledge of Spring, ASP.NET MVC and Oracle or SQL Server is preferred."
+    },
+    {
+      "title": "Backend Developer",
+      "relevant_categories": ["Java Developer", "Python Developer", "DotNet Developer", "INFORMATION-TECHNOLOGY"],
+      "text": "Backend Developer to build RESTful APIs and server-side logic. Required skills: Java with Spring Boot or Python with Django/Flask, MySQL or PostgreSQL, Hibernate/ORM, authentication, caching and performance tuning. Experience deploying services with Docker on AWS and writing JUnit or pytest tests is preferred."
+    },
+    {
+      "title": "Frontend Developer",
+      "relevant_categories": ["Web Designing", "INFORMATION-TECHNOLOGY"],
+      "text": "Frontend Developer to build responsive user interfaces for web applications. Strong HTML5, CSS3, JavaScript, jQuery, Bootstrap and Angular or React skills are required, along with experience in cross-browser compatibility, UI/UX design principles and consuming REST APIs."
+    },
+    {
+      "title": "Full-Stack Developer",
+      "relevant_categories": ["Java Developer", "Python Developer", "DotNet Developer", "Web Designing", "INFORMATION-TECHNOLOGY"],
+      "text": "Full-Stack Developer comfortable working on both front end and back end. Skills needed: JavaScript, HTML, CSS, Angular or React, Node.js, Java or Python web frameworks, REST APIs, MySQL and MongoDB. You will own features end to end, from database schema to user interface and deployment."
+    },
+    {
+      "title": "Mobile App Developer (Android/iOS)",
+      "relevant_categories": [],
+      "text": "Mobile App Developer to design and build native applications for Android and iOS. Required: Java or Kotlin with Android Studio and the Android SDK, Swift for iOS, REST API integration, SQLite, push notifications and publishing apps to the Play Store and App Store."
+    },
+    {
+      "title": "Systems Software Engineer",
+      "relevant_categories": [],
+      "text": "Systems Software Engineer to develop low-level software in C and C++ on Linux. Work includes operating system internals, multithreading, memory management, device drivers, shell scripting, networking protocols and debugging with GDB and performance profilers."
+    },
+    {
+      "title": "Data Analyst",
+      "relevant_categories": ["Data Science", "Business Analyst"],
+      "text": "Data Analyst to collect, clean and analyse business data and build dashboards. Required: advanced SQL, Excel, Python (pandas, NumPy) and Tableau or Power BI, plus statistics and data visualisation. You will present insights and reports to stakeholders."
+    },
+    {
+      "title": "Data Scientist / Machine Learning Engineer",
+      "relevant_categories": ["Data Science"],
+      "text": "Data Scientist to build and deploy machine learning models. Required: Python, scikit-learn, pandas, NumPy, regression, classification, clustering, feature engineering and model evaluation. Experience with deep learning (TensorFlow or Keras), NLP and SQL is a plus."
+    },
+    {
+      "title": "AI Engineer (NLP)",
+      "relevant_categories": ["Data Science"],
+      "text": "AI Engineer to develop natural language processing solutions such as text classification, sentiment analysis, named entity recognition and semantic search. Skills: Python, NLTK or spaCy, word embeddings, transformers, deep learning with TensorFlow or PyTorch, and deploying models as APIs."
+    },
+    {
+      "title": "Business Analyst (IT)",
+      "relevant_categories": ["Business Analyst"],
+      "text": "IT Business Analyst to gather and document business requirements, write user stories and functional specifications, create process flow diagrams and support user acceptance testing. Experience working with stakeholders and development teams in agile projects, SQL and JIRA is required."
+    },
+    {
+      "title": "DevOps Engineer",
+      "relevant_categories": ["DevOps Engineer"],
+      "text": "DevOps Engineer to automate build, test and deployment pipelines. Required: Jenkins, Git, Docker, Kubernetes, Ansible, Linux administration, shell scripting and AWS (EC2, S3, IAM). Experience with monitoring, infrastructure as code and continuous integration / continuous delivery is preferred."
+    },
+    {
+      "title": "QA / Automation Test Engineer",
+      "relevant_categories": ["Testing", "Automation Testing"],
+      "text": "QA Automation Engineer to design test plans and test cases and automate regression testing. Required: Selenium WebDriver with Java, TestNG or JUnit, manual and functional testing, defect tracking in JIRA, API testing and knowledge of the software testing life cycle."
+    },
+    {
+      "title": "Database Developer (SQL)",
+      "relevant_categories": ["Database", "ETL Developer"],
+      "text": "Database Developer to design schemas and write complex SQL queries, stored procedures, triggers and views. Required: Oracle, SQL Server or MySQL, PL/SQL, query optimisation, indexing, backup and recovery, and experience with ETL processes."
+    },
+    {
+      "title": "Data Engineer (Big Data)",
+      "relevant_categories": ["Hadoop", "ETL Developer"],
+      "text": "Data Engineer to build batch and streaming data pipelines. Required: Hadoop, HDFS, Hive, Spark, Sqoop, Kafka, Python or Scala, SQL and ETL design, plus data warehousing concepts and workflow scheduling."
+    }
+  ]
+}
