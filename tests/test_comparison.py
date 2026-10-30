@@ -359,9 +359,28 @@ def test_score_bins_cover_the_full_scale():
     assert bins.loc[0, "candidates"] == 2 and bins.loc[9, "candidates"] == 2
 
 
+@pytest.mark.parametrize(
+    "value, expected",
+    [(5, 5), (3, 3), (7, 7), (10, 7), (1, 1), (0, 1), (-2, 1), (2.9, 2), ("4", 4), ("", 5), ("abc", 5), (None, 5),
+     (float("nan"), 5), (float("inf"), 5), (True, 5)],
+)
+def test_top_k_count_validates_and_caps_the_number(value, expected):
+    from resume_matcher.comparison import top_k_count
+
+    assert top_k_count(value, available=7) == expected
+
+
+def test_top_k_count_with_few_or_no_resumes():
+    from resume_matcher.comparison import DEFAULT_TOP_K, top_k_count
+
+    assert DEFAULT_TOP_K == 5
+    assert top_k_count(None, available=3) == 3  # the default is capped too
+    assert top_k_count(5, available=0) == 0
+
+
 @pytest.mark.parametrize("method", ["tfidf", "glove", "sbert", "hybrid"])
 def test_top_k_limit_keeps_order_and_scores_for_every_method(method):
-    from resume_matcher.comparison import RESULT_LIMITS, limit_results
+    from resume_matcher.comparison import limit_results, top_k_count
     from resume_matcher.matcher import GloveMatcher, HybridMatcher, SbertMatcher
     from tests.conftest import FAKE_GLOVE, FakeSentenceModel
 
@@ -376,8 +395,22 @@ def test_top_k_limit_keeps_order_and_scores_for_every_method(method):
     }
     results = matchers[method]().fit().match("python developer", top_k=len(corpus))
     candidates = build_candidates(results, corpus, extract_requirements("python developer"), "python developer", method)
-    for label, k in RESULT_LIMITS.items():
-        shown = limit_results(candidates, k)
-        assert len(shown) == (len(candidates) if k is None else min(k, len(candidates)))
+    assert len(candidates) == 12  # every resume is ranked, whatever is displayed
+    for entered in (1, 3, 5, 12, 20):
+        shown = limit_results(candidates, top_k_count(entered, len(candidates)))
+        assert len(shown) == min(entered, 12)
         assert shown["resume_id"].tolist() == candidates["resume_id"].head(len(shown)).tolist()
         assert shown["score"].tolist() == candidates["score"].head(len(shown)).tolist()
+
+
+def test_select_top_k_takes_the_best_ranked_in_rank_order():
+    from resume_matcher.comparison import select_top_k
+
+    ranked = pd.DataFrame({"resume_id": list("abcdefg"), "rank": range(1, 8), "score": [90, 80, 70, 60, 50, 40, 30]})
+    shuffled = ranked.sample(frac=1, random_state=0)  # e.g. after sorting by name
+    top = select_top_k(shuffled, 5)
+    assert top["resume_id"].tolist() == list("abcde") and top["score"].tolist() == [90, 80, 70, 60, 50]
+    assert select_top_k(ranked, 3)["resume_id"].tolist() == list("abc")
+    assert len(select_top_k(ranked, 7)) == 7 and len(select_top_k(ranked, 10)) == 7  # capped at what is ranked
+    assert len(select_top_k(ranked, None)) == 5  # empty input: the default
+    assert len(ranked) == 7  # the lower-ranked resumes are not dropped from the ranking

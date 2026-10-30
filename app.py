@@ -28,32 +28,32 @@ import pandas as pd
 import streamlit as st
 
 from resume_matcher.comparison import (
-    DEFAULT_RESULT_LIMIT,
     DEFAULT_STRONG_THRESHOLDS,
+    DEFAULT_TOP_K,
     MATRIX_FOUND,
     MATRIX_RELATED,
     MATRIX_SEMANTIC,
     MAX_COMPARE,
     NOT_AVAILABLE,
-    RESULT_LIMITS,
     SORT_OPTIONS,
     build_candidates,
     combine_method_rankings,
     comparison_csv,
     comparison_summary,
     filter_candidates,
-    limit_results,
     masked_text,
     paginate,
     ranking_agreement,
     results_csv,
     score_bins,
     select_candidates,
+    select_top_k,
     shared_skills,
     skill_matrix_csv,
     sort_candidates,
     status_matrix,
     summarize_run,
+    top_k_count,
     validate_selection,
 )
 from resume_matcher.config import (
@@ -800,8 +800,10 @@ def render_empty_state() -> None:
     )
 
 
-def render_kpis(run: MatchRun, threshold: float) -> None:
-    summary = summarize_run(run.candidates, run.resumes_processed, threshold)
+def render_kpis(run: MatchRun, top: pd.DataFrame, threshold: float) -> None:
+    """Upload and ranking counts cover the whole run; the score and coverage KPIs cover the top K only."""
+    summary = summarize_run(top, run.resumes_processed, threshold)
+    k = len(top)
     k1, k2, k3, k4 = st.columns(4)
     k1.metric(
         "Resumes uploaded", run.resumes_uploaded, border=True, icon=":material/upload_file:",
@@ -816,26 +818,26 @@ def render_kpis(run: MatchRun, threshold: float) -> None:
         help="Unreadable, empty, too large or unsupported files (listed above the results).",
     )
     k4.metric(
-        "Candidates ranked", summary.candidates_ranked, border=True, icon=":material/format_list_numbered:",
-        help="Every processed resume is ranked; the result selector only changes how many are shown.",
+        "Candidates ranked", len(run.candidates), border=True, icon=":material/format_list_numbered:",
+        help="Every processed resume is ranked; the dashboard then analyses only the top K of them.",
     )
     k5, k6, k7, k8 = st.columns(4)
     k5.metric(
         "Strong matches", summary.strong_matches, border=True, icon=":material/verified:",
-        help=f"Ranked resumes with a {METHOD_SHORT[run.method]} similarity score of at least {threshold:g}. "
+        help=f"Top-{k} resumes with a {METHOD_SHORT[run.method]} similarity score of at least {threshold:g}. "
         "Change the threshold with the button above.",
     )
     k6.metric(
         "Average similarity", "—" if summary.average_score is None else f"{summary.average_score:.1f}",
         border=True, icon=":material/functions:",
-        help="Mean document similarity of the ranked candidates in this run (0–100). Only meaningful "
-        "within one run and method; it is not a probability.",
+        help=f"Mean document similarity of the top {k} candidates (0–100). Only meaningful within one run "
+        "and method; it is not a probability.",
     )
     k7.metric(
         "Average coverage", "—" if summary.average_coverage is None else f"{summary.average_coverage:.0f}%",
         border=True, icon=":material/checklist:",
-        help="Mean share of the job's requirements that each resume shows evidence for. A separate "
-        "measure from similarity; not a probability.",
+        help=f"Mean share of the job's requirements that each of the top {k} resumes shows evidence for. "
+        "A separate measure from similarity; not a probability.",
     )
     k8.metric(
         "Requirements checked", len(run.requirement_names), border=True, icon=":material/rule:",
@@ -860,20 +862,68 @@ def render_threshold_control(run: MatchRun) -> float:
     return threshold_for(run.method)
 
 
-def render_selection_bar(run: MatchRun) -> list[str]:
-    """Pick 2 to 5 candidates from the current run; the button opens the Compare tab."""
+TOP_K_KEY = "top_k_results"
+
+
+def render_top_k_control(run: MatchRun, shortlist: set[str]) -> pd.DataFrame:
+    """The "Number of Top Resumes to Display" card. Returns the selected top-K candidates: the one dataset
+    that every view below (KPIs, comparison picker, Ranking, Insights, Compare and the CSV) works from."""
+    # The maximum is the number of ranked resumes, enforced here rather than by the widget: Streamlit
+    # rejects a number above max_value with an error, while a larger number should simply select them all.
+    available = len(run.candidates)
+    requested = st.session_state.get(TOP_K_KEY, DEFAULT_TOP_K)
+    top = select_top_k(run.candidates, requested)
+    # Shows the capped, cleaned-up number in the field. value=None below only lets an emptied field reach
+    # top_k_count (which then restores the default) instead of Streamlit's own fallback to the minimum.
+    st.session_state[TOP_K_KEY] = max(1, len(top))
+
+    left_out = available - len(top)
+    with st.container(border=True, key="card_topk"):
+        st.markdown(
+            f"**Showing {len(top)} of {available} ranked resumes** · {METHOD_SHORT[run.method]}"
+            + (
+                f" <span style='color:#64748B'>· the other {left_out} stay ranked but are left out of the "
+                "statistics, ranking, insights, comparison and CSV below</span>"
+                if left_out else ""
+            ),
+            unsafe_allow_html=True,
+        )
+        count, note, download = st.columns([1.2, 0.6, 1.2], vertical_alignment="bottom")
+        count.number_input(
+            "Number of Top Resumes to Display", value=None, min_value=1, step=1, format="%d", key=TOP_K_KEY,
+            help=f"Any whole number from 1 to {available} (the number of ranked resumes); a larger number selects "
+            "all of them. Every resume is ranked first; the dashboard then uses only these top resumes.",
+        )
+        if top_k_count(requested, available + 1) > available:  # more than the ranked resumes was entered
+            note.caption(f"Only {available} resumes are ranked, so all {available} are shown.")
+        download.download_button(
+            f"Download top {len(top)} as CSV",
+            results_csv(top, shortlist),
+            file_name=f"resume_matches_{run.method}.csv",
+            mime="text/csv",
+            icon=":material/download:",
+            width="stretch",
+            key="dl_results",
+            help=f"The top {len(top)} result(s), with both scores and the evidence. Contains candidate data; "
+            "store it carefully.",
+        )
+    return top
+
+
+def render_selection_bar(run: MatchRun, top: pd.DataFrame) -> list[str]:
+    """Pick 2 to 5 of the top-K candidates; the button opens the Compare tab."""
     key = selection_key(run)
-    ids = run.candidates["resume_id"].tolist()
+    ids = top["resume_id"].tolist()
     if key in st.session_state:  # keep only IDs that belong to this run, at most MAX_COMPARE
         valid = [rid for rid in st.session_state[key] if rid in ids][:MAX_COMPARE]
         if valid != list(st.session_state[key]):
             st.session_state[key] = valid
-    labels = {row.resume_id: f"#{row.rank} · {row.resume_id} · {row.score:.1f}" for row in run.candidates.itertuples()}
+    labels = {row.resume_id: f"#{row.rank} · {row.resume_id} · {row.score:.1f}" for row in top.itertuples()}
     with st.container(border=True, key="card_select"):
         c1, c2 = st.columns([2.4, 1.2], vertical_alignment="bottom")
         selected = c1.multiselect(
             f"Candidates to compare (choose 2 to {MAX_COMPARE})", ids, format_func=labels.get,
-            max_selections=MAX_COMPARE, key=key, placeholder="Choose candidates from this ranking",
+            max_selections=MAX_COMPARE, key=key, placeholder=f"Choose candidates from the top {len(ids)}",
             disabled=len(ids) < 2,
         )
         status = validate_selection(selected, available=len(ids))
@@ -974,10 +1024,11 @@ def render_method_details(row) -> None:
         )
 
 
-def render_ranking_tab(run: MatchRun, threshold: float, shortlist: set[str], selected: list[str]) -> pd.DataFrame:
-    """The ranked table with search, filters, result limit and pages. Returns the rows in view
-    (every page), which the Insights charts reuse."""
-    candidates = run.candidates
+def render_ranking_tab(
+    run: MatchRun, top: pd.DataFrame, threshold: float, shortlist: set[str], selected: list[str]
+) -> pd.DataFrame:
+    """The top-K candidates in a table with search, filters and pages. Returns the rows in view (every page)."""
+    candidates = top
     c1, c2 = st.columns([1.4, 1], vertical_alignment="bottom")
     query = c1.text_input("Search", key="rank_search", placeholder="File name or skill",
                           icon=":material/search:")
@@ -1007,31 +1058,9 @@ def render_ranking_tab(run: MatchRun, threshold: float, shortlist: set[str], sel
         sort_key,
     )
 
-    with st.container(border=True, key="card_topk"):
-        heading = st.empty()  # filled once the Top K choice below is known
-        top_k, _, download = st.columns([1.2, 0.6, 1.2], vertical_alignment="bottom")
-        limit_label = top_k.selectbox(
-            "Show Top K Resumes", list(RESULT_LIMITS), index=list(RESULT_LIMITS).index(DEFAULT_RESULT_LIMIT),
-            key="top_k_results",
-            help="How many of the best-ranked resumes to show. Every resume is always ranked and scored; this "
-            "only changes the view (table, candidate details, charts and the results CSV).",
-        )
-        in_view = limit_results(filtered, RESULT_LIMITS[limit_label])
-        heading.markdown(
-            f"**{len(candidates)} resumes ranked · {METHOD_SHORT[run.method]}** "
-            f"<span style='color:#64748B'>· {len(filtered)} match the filters · showing {len(in_view)}</span>",
-            unsafe_allow_html=True,
-        )
-        download.download_button(
-            "Download results as CSV",
-            results_csv(in_view, shortlist),
-            file_name=f"resume_matches_{run.method}.csv",
-            mime="text/csv",
-            icon=":material/download:",
-            width="stretch",
-            help=f"All {len(in_view)} result(s) in view (every page), with both scores and the evidence. "
-            "Contains candidate data; store it carefully.",
-        )
+    in_view = filtered
+    if len(filtered) != len(top):
+        st.caption(f"{len(filtered)} of the top {len(top)} match the search and filters.")
     if in_view.empty:
         st.info("No candidates match the current search and filters.", icon=":material/filter_alt_off:")
         return in_view
@@ -1166,23 +1195,20 @@ def render_ranking_tab(run: MatchRun, threshold: float, shortlist: set[str], sel
 MAX_CHART_ROWS = 50
 
 
-def render_insights_tab(run: MatchRun, threshold: float, in_view: pd.DataFrame) -> None:
-    """Charts for the current run. Per-candidate charts follow the Ranking tab's filters and result
-    limit (at most MAX_CHART_ROWS bars); the distribution and coverage charts use every ranked resume."""
-    candidates = run.candidates
-    per_candidate = in_view.head(MAX_CHART_ROWS) if len(in_view) else candidates.head(MAX_CHART_ROWS)
-    note = f"{len(per_candidate)} candidate(s) in view" + (
-        f" (first {MAX_CHART_ROWS} shown)" if len(in_view) > MAX_CHART_ROWS else ""
-    )
+def render_insights_tab(run: MatchRun, top: pd.DataFrame, threshold: float) -> None:
+    """Charts for the top-K candidates only (per-candidate bar charts show at most MAX_CHART_ROWS)."""
+    candidates = top
+    per_candidate = top.head(MAX_CHART_ROWS)
+    note = f"Top {len(top)} candidates" + (f" (first {MAX_CHART_ROWS} shown)" if len(top) > MAX_CHART_ROWS else "")
     c1, c2 = st.columns([1.4, 1], gap="medium")
     with c1, st.container(border=True, key="card_chart_scores"):
         section_title("Similarity score by candidate", f"{note} · dashed line: strong-match threshold ({threshold:g})")
         st.altair_chart(score_chart(per_candidate, threshold), width="stretch")
     with c2, st.container(border=True, key="card_chart_dist"):
-        section_title("Score distribution", f"All {len(candidates)} ranked candidates per 10-point range")
+        section_title("Score distribution", f"Top {len(candidates)} candidates per 10-point range")
         st.altair_chart(distribution_chart(candidates), width="stretch")
 
-    render_method_comparison(run)
+    render_method_comparison(run, top)
     if not run.requirement_names:
         st.info(
             "No specific requirements were detected in the job description, so there are no "
@@ -1193,7 +1219,7 @@ def render_insights_tab(run: MatchRun, threshold: float, in_view: pd.DataFrame) 
     with st.container(border=True, key="card_chart_scatter"):
         section_title(
             "Similarity vs requirement coverage",
-            f"All {len(candidates)} ranked candidates. The two measures are separate: a resume can be close "
+            f"Top {len(candidates)} candidates. The two measures are separate: a resume can be close "
             "to the job description overall while matching few listed requirements, or the reverse.",
         )
         st.altair_chart(similarity_coverage_chart(candidates, run.method), width="stretch")
@@ -1202,7 +1228,7 @@ def render_insights_tab(run: MatchRun, threshold: float, in_view: pd.DataFrame) 
         section_title("Requirements found per resume", f"{note} · found vs not found in the text")
         st.altair_chart(requirements_chart(per_candidate), width="stretch")
     with c4, st.container(border=True, key="card_chart_coverage"):
-        section_title("Requirement coverage", f"How many of the {len(candidates)} ranked resumes match each requirement")
+        section_title("Requirement coverage", f"How many of the top {len(candidates)} resumes match each requirement")
         st.altair_chart(coverage_chart(candidates, run.requirement_names), width="stretch")
 
 
@@ -1226,13 +1252,15 @@ def _rank_all_methods(run: MatchRun) -> None:
     st.session_state[f"_method_ranks_{run.run_id}"] = (results, problems)
 
 
-def render_method_comparison(run: MatchRun) -> None:
-    """How the same resumes rank under TF-IDF, GloVe, Sentence-BERT and Hybrid."""
+def render_method_comparison(run: MatchRun, top: pd.DataFrame) -> None:
+    """How the top-K resumes rank under TF-IDF, GloVe, Sentence-BERT and Hybrid. Each method ranks every
+    resume (so the ranks are the real ones); only the top-K rows are shown and compared."""
     with st.container(border=True, key="card_method_compare"):
         section_title(
             "Ranking by method",
-            "How the same resumes rank under each method for this job description. Scores of different "
-            "methods are on different scales, so compare ranks, not scores.",
+            f"How the top {len(top)} resumes rank under each method (among all {len(run.candidates)} ranked) "
+            "for this job description. Scores of different methods are on different scales, so compare ranks, "
+            "not scores.",
         )
         stored = st.session_state.get(f"_method_ranks_{run.run_id}")
         if stored is None:
@@ -1249,6 +1277,7 @@ def render_method_comparison(run: MatchRun) -> None:
             return
         methods = list(results)
         table = combine_method_rankings(results)
+        table = table[table["resume_id"].isin(top["resume_id"])]
         order_by = f"rank_{run.method}" if run.method in results else f"rank_{methods[0]}"
         table = table.sort_values(order_by, kind="stable")
         config = {"resume_id": st.column_config.TextColumn("Candidate", width="medium")}
@@ -1262,7 +1291,8 @@ def render_method_comparison(run: MatchRun) -> None:
         shown = table[["resume_id", *[f"rank_{m}" for m in methods], "rank_spread"]]
         st.dataframe(shown, hide_index=True, width="stretch", column_config=config, height=min(420, 36 * (len(shown) + 1)))
         if len(methods) > 1:
-            st.caption("Agreement between methods (Kendall's tau: 1 = same order, 0 = unrelated).")
+            st.caption(f"Agreement between methods on the top {len(top)} (Kendall's tau: 1 = same order, "
+                       "0 = unrelated).")
             agreement = ranking_agreement(table.reset_index(drop=True), methods)
             st.dataframe(agreement, hide_index=True, width="stretch", column_config={
                 "methods": "Methods", "kendall_tau": st.column_config.NumberColumn("Kendall's tau", format="%.3f"),
@@ -1279,9 +1309,11 @@ def _matrix_style(value: str) -> str:
 
 
 def render_compare_tab(
-    run: MatchRun, selected_ids: list[str], shortlist: set[str], originals: dict[str, tuple[str, bytes]], threshold: float
+    run: MatchRun, top: pd.DataFrame, selected_ids: list[str], shortlist: set[str],
+    originals: dict[str, tuple[str, bytes]], threshold: float,
 ) -> None:
-    status = validate_selection(selected_ids, available=len(run.candidates))
+    """Side-by-side comparison of 2 to 5 candidates chosen from the top K."""
+    status = validate_selection(selected_ids, available=len(top))
     if not status.ok:
         st.info(
             f"{status.message} Choose {2}–{MAX_COMPARE} candidates in the selector above, then click "
@@ -1290,8 +1322,8 @@ def render_compare_tab(
         )
         return
     try:
-        selected = select_candidates(run.candidates, selected_ids)
-    except ValueError as exc:  # e.g. IDs from an older run
+        selected = select_candidates(top, selected_ids)
+    except ValueError as exc:  # e.g. IDs from an older run or outside the top K
         st.warning(str(exc))
         return
     enriched = semantic_checks(run, selected)  # adds semantic evidence for Sentence-BERT runs
@@ -1453,19 +1485,20 @@ def render_dashboard(run: MatchRun, inputs: Inputs) -> None:
         )
     with control:
         threshold = render_threshold_control(run)
-    render_kpis(run, threshold)
-
     shortlist = shortlist_for(run)
-    selected = render_selection_bar(run)
+    # Every resume is ranked; from here on the dashboard uses only the selected top K.
+    top = render_top_k_control(run, shortlist)
+    render_kpis(run, top, threshold)
+    selected = render_selection_bar(run, top)
     originals = original_files(inputs.files, inputs.sources, inputs.corpus) if inputs.corpus is not None else {}
 
     ranking, insights, compare = st.tabs(TABS, key="view", on_change="rerun")
     with ranking:
-        in_view = render_ranking_tab(run, threshold, shortlist, selected)
+        render_ranking_tab(run, top, threshold, shortlist, selected)
     with insights:
-        render_insights_tab(run, threshold, in_view)
+        render_insights_tab(run, top, threshold)
     with compare:
-        render_compare_tab(run, selected, shortlist, originals, threshold)
+        render_compare_tab(run, top, selected, shortlist, originals, threshold)
 
 
 def main() -> None:

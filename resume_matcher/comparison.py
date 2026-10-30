@@ -18,6 +18,7 @@ state (selection, shortlist) in the user's session only.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 
 import numpy as np
@@ -203,10 +204,9 @@ SORT_OPTIONS = {
     "name": "Candidate (A–Z)",
 }
 
-# "Show Top K Resumes" choices in the dashboard; None shows every ranked resume (over several pages).
-# They only limit what is displayed: every processed resume is always ranked.
-RESULT_LIMITS = {"Top 5": 5, "Top 10": 10, "Top 20": 20, "Top 30": 30, "Top 50": 50, "All Resumes": None}
-DEFAULT_RESULT_LIMIT = "Top 30"
+# Default for "Number of Top Resumes to Display" in the dashboard. Every processed resume is ranked first;
+# the dashboard then works only with the top K (select_top_k).
+DEFAULT_TOP_K = 5
 
 
 def filter_candidates(
@@ -244,6 +244,30 @@ def filter_candidates(
     if min_coverage > 0:
         keep &= candidates["coverage"].fillna(0) >= min_coverage
     return candidates[keep]
+
+
+def top_k_count(value: object, available: int, default: int = DEFAULT_TOP_K) -> int:
+    """How many of the top resumes to show: a whole number from 1 to ``available`` (0 if none are ranked).
+
+    Empty, non-numeric or infinite input falls back to ``default``; decimals are rounded down; zero and
+    negative numbers become 1; numbers above ``available`` are capped at ``available``.
+    """
+    if available <= 0:
+        return 0
+    try:
+        number = float(value) if not isinstance(value, bool) else math.nan
+    except (TypeError, ValueError):
+        number = math.nan
+    if not math.isfinite(number):
+        number = default
+    return min(max(1, math.floor(number)), available)
+
+
+def select_top_k(candidates: pd.DataFrame, k: object) -> pd.DataFrame:
+    """The ``k`` best-ranked candidates in rank order, with their ranks and scores unchanged (``k`` is
+    cleaned up and capped by top_k_count, so a larger ``k`` selects everyone). The other candidates stay
+    ranked in ``candidates``; they are only left out of the selection."""
+    return candidates.sort_values("rank", kind="stable").head(top_k_count(k, len(candidates)))
 
 
 def limit_results(candidates: pd.DataFrame, limit: int | None) -> pd.DataFrame:

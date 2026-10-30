@@ -46,7 +46,7 @@ human reviewer can start with the most relevant ones.
 | On-disk cache of Sentence-BERT embeddings for the evaluation datasets (never for uploaded resumes) | ✅ Implemented |
 | Clear "unavailable" status when GloVe/SBERT resources are missing | ✅ Implemented |
 | Streamlit app: upload several resumes (PDF/DOCX/TXT/MD), one empty job-description box, method selector | ✅ Implemented |
-| Every readable resume is ranked; the "Show Top K Resumes" selector (Top 5 / 10 / 20 / 30 / 50 / All Resumes) and pages of 25 only change the view | ✅ Implemented |
+| Every readable resume is ranked; "Number of Top Resumes to Display" (any whole number, 5 by default, capped at the number ranked) then selects the top K that the whole dashboard (KPIs, ranking, insights, comparison, CSV) analyses | ✅ Implemented |
 | PDF (`pypdf`) and Word .docx text extraction for uploaded resumes (DOCX read with the standard library) | ✅ Implemented |
 | Ranked results table with similarity score and contact-masked preview | ✅ Implemented |
 | Per-resume card: job requirements *Included in Resume* / *Not Found in Resume* | ✅ Implemented |
@@ -295,9 +295,16 @@ Hybrid 60 (`DEFAULT_STRONG_THRESHOLDS` in `resume_matcher/comparison.py`). They 
 Science resumes in `demo_samples/` from the rest for every method; they are a starting point, not a
 calibrated cut-off. Changing the threshold never changes the ranking.
 
-**Ranking tab.** *Show Top K Resumes* (Top 5, 10, 20, 30, 50 or All Resumes; Top 30 by default), next to the
-result count above the table, and pages of 25 only change what is displayed; every resume stays ranked and
-keeps its score, for every method. Search by file name or skill; sort by rank, similarity, coverage,
+**Top K.** Every resume is ranked first. *Number of Top Resumes to Display* (5 by default), above the
+statistics, then selects the K best-ranked resumes for the chosen method, e.g. "Showing 5 of 7 ranked
+resumes", and the whole dashboard works from that one selection: the score and coverage statistics, the
+ranking table, every Insights chart (including the ranking by method), the candidates that can be compared
+and the results CSV. The other resumes stay ranked and keep their scores (and any shortlisting); they are
+only left out until K is raised. Any whole number from 1 up to the number of ranked resumes is accepted; a
+larger number selects all of them, an emptied field returns to 5, decimals are rounded down and numbers
+below 1 are rejected. A new ranking (another method or job) selects a new top K.
+
+**Ranking tab.** Shows the top K with pages of 25. Search by file name or skill; sort by rank, similarity, coverage,
 requirements found or name; filter to shortlisted candidates, strong matches, resumes that match chosen
 requirements, or an optional minimum similarity / coverage (0 = off). The table shows rank, similarity,
 coverage, matched / related / missing requirements and the method. Each candidate's card lists every
@@ -315,13 +322,13 @@ counted as a match and never changes coverage. It is not looked for with product
 AWS), where similar wording is not evidence. The threshold is strict (§13), so it shows few, well-supported
 lines; it is computed for the candidates on screen only.
 
-**Insights tab.** Similarity score by candidate and requirements found per resume (both for the rows in view,
-at most 50 bars), the score distribution, similarity against coverage, and how many resumes match each
-requirement (all ranked resumes). *Ranking by method* ranks the same resumes with every available method
-(loading GloVe or Sentence-BERT if needed) and shows each resume's rank per method, the spread, and how
-well the methods agree (Kendall's tau, top-10 overlap).
+**Insights tab.** All for the top K only: similarity score by candidate and requirements found per resume
+(at most 50 bars), the score distribution, similarity against coverage, and how many of the top K resumes
+match each requirement. *Ranking by method* ranks every resume with every available method (loading GloVe or
+Sentence-BERT if needed), then shows the top K's rank per method (among all ranked resumes), the spread, and
+how well the methods agree on them (Kendall's tau, top-10 overlap).
 
-**Compare tab.** Choose 2 to 5 candidates in *Candidates to compare* (or with *Add to comparison* on a
+**Compare tab.** Choose 2 to 5 of the top K candidates in *Candidates to compare* (or with *Add to comparison* on a
 card) and click **Compare Candidates**. All of them come from the same run, so they share one job
 description, one method and one score scale. You get a short summary that states its criteria (score,
 requirements found, shared and unique skills), one card per candidate (similarity and coverage bars,
@@ -374,7 +381,9 @@ on the resumes plus the job description, that job words found in no resume lower
 factor, keyword stuffing, and that 4, 30, 50, 100, 250 and 1,000 resumes are all ranked with each score
 attached to the right file. `tests/test_coverage.py` covers exact / alias / related / missing requirements,
 evidence quotes, degree and years parsing, and that Flask is never counted as Django. The dashboard tests
-also upload 60 resumes and check every "Show Top K Resumes" option (row counts, unchanged ranks and scores, pages), and check DOCX uploads, failed-file counts and the
+also upload 60 resumes and check "Number of Top Resumes to Display" (best 5 / 3 / 7 of 7, 10 capped at 7, invalid numbers, unchanged
+ranks and scores, pages, CSV and filters) and that, for K = 5, 3 and 7, the statistics, ranking, every
+Insights chart, the ranking by method, the comparison picker, the Compare tab and the CSV use exactly the top K, and check DOCX uploads, failed-file counts and the
 optional minimum-score filter. `tests/test_embeddings.py` covers the GloVe table (one matrix, loaded once, malformed or incomplete files
 reported), word lookup, out-of-vocabulary and empty documents, optional IDF weighting, removal of the common
 direction, chunking (sections, limits, nothing lost), long resumes matched on later sections, normalized

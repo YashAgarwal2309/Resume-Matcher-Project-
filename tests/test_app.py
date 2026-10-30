@@ -269,6 +269,7 @@ def test_comparison_needs_at_least_two_candidates(app):
 
 def test_more_than_five_candidates_are_capped(app):
     match_tfidf(app, files=[*resume_files(), ("106.txt", b"Python SQL analyst", "text/plain")])
+    show_top(app, 6)  # all six in the top K, so all six can be picked
     compare_select(app).set_value([f"{i}.txt" for i in range(101, 107)]).run()  # the browser stops at 5
     assert len(compare_select(app).value) == 5
     assert not compare_button(app).disabled
@@ -365,7 +366,11 @@ def many_resumes(n):
 
 
 def ranking_head(at):
-    return next(m.value for m in at.markdown if "match the filters" in m.value)
+    return next(m.value for m in at.markdown if "ranked resumes" in m.value)
+
+
+def show_top(at, value):
+    at.number_input(key="top_k_results").set_value(value).run()
 
 
 def test_every_uploaded_resume_is_ranked_and_limits_only_change_the_view(app):
@@ -373,12 +378,14 @@ def test_every_uploaded_resume_is_ranked_and_limits_only_change_the_view(app):
     kpis = metrics(app)
     assert kpis["Resumes uploaded"] == "60" and kpis["Resumes processed"] == "60"
     assert kpis["Failed files"] == "0" and kpis["Candidates ranked"] == "60"
-    assert "60 resumes ranked" in ranking_head(app) and "showing 30" in ranking_head(app)  # Top 30 by default
+    assert "Showing 5 of 60 ranked resumes" in ranking_head(app)  # top 5 by default
+    assert app.dataframe[0].value["rank"].tolist() == [1, 2, 3, 4, 5]
+    show_top(app, 30)
     assert app.dataframe[0].value["rank"].tolist() == list(range(1, 26))  # page 1 of 2, 25 per page
     app.number_input(key="rank_page_2").set_value(2).run()
     assert app.dataframe[0].value["rank"].tolist() == list(range(26, 31))
-    app.selectbox(key="top_k_results").select("All Resumes").run()
-    assert "showing 60" in ranking_head(app)
+    show_top(app, 60)
+    assert "Showing 60 of 60 ranked resumes" in ranking_head(app)
     app.number_input(key="rank_page_3").set_value(3).run()
     assert app.dataframe[0].value["rank"].tolist() == list(range(51, 61))
     assert len(compare_select(app).options) == 60  # every ranked resume can be compared
@@ -386,7 +393,7 @@ def test_every_uploaded_resume_is_ranked_and_limits_only_change_the_view(app):
 
 def test_minimum_score_filter_is_optional_and_never_unranks(app):
     match_tfidf(app, files=many_resumes(20), job="Required: Python, Django, PostgreSQL, Docker and AWS.")
-    app.selectbox(key="top_k_results").select("All Resumes").run()
+    show_top(app, 20)
     everyone = app.dataframe[0].value
     assert len(everyone) == 20 and (everyone["score"] == 0).any()  # zero-similarity resumes are kept
     app.number_input(key="rank_min_score").set_value(10.0).run()
@@ -433,37 +440,174 @@ def test_fresh_run_is_not_marked_as_outdated(app):
     assert any("changed after this ranking" in i.value for i in app.info)
 
 
-# ---- "Show Top K Resumes"
+# ---- "Number of Top Resumes to Display"
 
-def test_show_top_k_resumes_selector_limits_the_view_only(app):
-    import pandas as pd
+def test_top_resumes_input_shows_the_best_k_of_the_ranked_resumes(app):
+    match_tfidf(app, files=many_resumes(7), job="Required: Python, Django, PostgreSQL, Docker and AWS.")
+    field = app.number_input(key="top_k_results")
+    assert field.label == "Number of Top Resumes to Display" and field.value == 5 and field.min == 1
+    show_top(app, 7)
+    full = app.dataframe[0].value  # all 7, best first
+    assert full["rank"].tolist() == list(range(1, 8))
+    for entered, expected in [(5, 5), (3, 3), (7, 7), (10, 7)]:  # 10 > 7 available: capped at 7
+        show_top(app, entered)
+        shown = app.dataframe[0].value
+        assert f"Showing {expected} of 7 ranked resumes" in ranking_head(app)
+        assert shown["resume_id"].tolist() == full["resume_id"].head(expected).tolist()  # best first
+        assert shown["score"].tolist() == full["score"].head(expected).tolist()  # scores unchanged
+        assert app.number_input(key="top_k_results").value == expected  # the field shows the capped number
+        assert metrics(app)["Candidates ranked"] == "7"  # every resume is still ranked
+    assert any("Only 7 resumes are ranked, so all 7 are shown" in c.value for c in app.caption)  # after 10
+    show_top(app, 5)
+    assert not any("Only 7 resumes are ranked" in c.value for c in app.caption)
 
-    from resume_matcher.comparison import RESULT_LIMITS
 
+# Below the minimum of 1, Streamlit rejects the number (the default stays); an emptied field restores the
+# default; decimals are rounded down.
+@pytest.mark.parametrize("entered, expected", [(0, 5), (-4, 5), (2.7, 2), (None, 5)])
+def test_top_resumes_input_handles_invalid_numbers(app, entered, expected):
+    match_tfidf(app, files=many_resumes(7), job="Required: Python, Django, PostgreSQL, Docker and AWS.")
+    show_top(app, entered)
+    assert not app.exception
+    assert len(app.dataframe[0].value) == expected and f"Showing {expected} of 7" in ranking_head(app)
+    assert app.number_input(key="top_k_results").value == expected
+
+
+def test_top_resumes_choice_is_kept_when_the_page_changes(app):
     match_tfidf(app, files=many_resumes(60), job="Required: Python, Django, PostgreSQL, Docker and AWS.")
-    selector = app.selectbox(key="top_k_results")
-    assert selector.label == "Show Top K Resumes"
-    assert selector.options == ["Top 5", "Top 10", "Top 20", "Top 30", "Top 50", "All Resumes"]
-    selector.select("All Resumes").run()
-    pages = [app.dataframe[0].value]
-    for page in (2, 3):
-        app.number_input(key="rank_page_3").set_value(page).run()
-        pages.append(app.dataframe[0].value)
-    full = pd.concat(pages)
-    assert full["rank"].tolist() == list(range(1, 61))  # "All Resumes": every processed resume
-    for label, k in RESULT_LIMITS.items():
-        app.selectbox(key="top_k_results").select(label).run()
-        expected = 60 if k is None else k
-        assert f"showing {expected}" in ranking_head(app)
-        shown = app.dataframe[0].value  # first page (25 per page)
-        assert shown["rank"].tolist() == list(range(1, min(expected, 25) + 1))
-        assert shown["score"].tolist() == full["score"].head(min(expected, 25)).tolist()  # scores unchanged
-        assert metrics(app)["Candidates ranked"] == "60"  # still ranked in full
-
-
-def test_top_k_choice_is_kept_when_the_page_changes(app):
-    match_tfidf(app, files=many_resumes(60), job="Required: Python, Django, PostgreSQL, Docker and AWS.")
-    app.selectbox(key="top_k_results").select("Top 50").run()
+    show_top(app, 50)
     app.number_input(key="rank_page_2").set_value(2).run()
     assert app.dataframe[0].value["rank"].tolist() == list(range(26, 51))
-    assert app.selectbox(key="top_k_results").value == "Top 50"
+    assert app.number_input(key="top_k_results").value == 50
+
+
+def test_top_resumes_limits_the_csv_and_follows_filters(app):
+    match_tfidf(app, files=many_resumes(20), job="Required: Python, Django, PostgreSQL, Docker and AWS.")
+    show_top(app, 3)
+    assert "Download top 3 as CSV" in downloads(app)
+    top3 = app.dataframe[0].value["resume_id"].tolist()
+    app.text_input(key="rank_search").input(top3[0]).run()  # filters work inside the top K
+    assert "Showing 3 of 20 ranked resumes" in ranking_head(app)
+    assert any("1 of the top 3 match the search and filters" in c.value for c in app.caption)
+    assert app.dataframe[0].value["resume_id"].tolist() == [top3[0]]
+
+
+# ---- The top K drives the whole dashboard (KPIs, ranking, insights, compare, CSV)
+
+TOP_K_JOB = "Required: Python, Django, PostgreSQL, Docker and AWS."
+
+
+def chart_data(at):
+    """The data behind each Insights chart, in drawing order: scores, distribution, similarity vs
+    coverage, requirements per resume, coverage per requirement."""
+    import pyarrow as pa
+
+    return [
+        [pa.ipc.open_stream(d.data.data).read_all().to_pandas() for d in chart.proto.datasets]
+        for chart in at.get("vega_lite_chart")
+    ]
+
+
+@pytest.fixture
+def csv_spy(monkeypatch):
+    """Records the rows passed to the results CSV (the app imports results_csv on every run)."""
+    from resume_matcher import comparison
+
+    exported = []
+    real = comparison.results_csv
+    monkeypatch.setattr(comparison, "results_csv", lambda rows, *a, **k: exported.append(rows) or real(rows, *a, **k))
+    return exported
+
+
+def full_ranking(at, n):
+    show_top(at, n)
+    return at.dataframe[0].value.reset_index(drop=True)
+
+
+@pytest.mark.parametrize("k", [5, 3, 7])
+def test_every_dashboard_component_uses_only_the_top_k(app, csv_spy, k):
+    from resume_matcher.comparison import DEFAULT_STRONG_THRESHOLDS
+
+    match_tfidf(app, files=many_resumes(7), job=TOP_K_JOB)
+    full = full_ranking(app, 7)  # every resume is ranked first
+    top = full.head(k)
+    ids = top["resume_id"].tolist()
+    show_top(app, k)
+
+    # Ranking: the K best, in rank order, with unchanged scores
+    table = app.dataframe[0].value
+    assert table["resume_id"].tolist() == ids and table["rank"].tolist() == list(range(1, k + 1))
+    assert table["score"].tolist() == top["score"].tolist()
+    assert f"Showing {k} of 7 ranked resumes" in ranking_head(app)
+
+    # KPIs: counts cover the run, scores and coverage only the top K
+    kpis = metrics(app)
+    assert kpis["Candidates ranked"] == "7" and kpis["Resumes processed"] == "7"
+    assert kpis["Average similarity"] == f"{top['score'].mean():.1f}"
+    assert kpis["Average coverage"] == f"{top['coverage'].mean():.0f}%"
+    assert kpis["Strong matches"] == str(int((top["score"] >= DEFAULT_STRONG_THRESHOLDS["tfidf"]).sum()))
+
+    # Insights: every chart is drawn from the same K resumes
+    scores, distribution, scatter, per_resume, coverage = chart_data(app)
+    assert sorted(scores[0]["resume_id"]) == sorted(ids)
+    assert distribution[0]["candidates"].sum() == k
+    assert sorted(scatter[0]["resume_id"]) == sorted(ids)
+    assert per_resume[0]["count"].sum() == k * 5  # found + not found = 5 requirements per resume
+    expected = {name: sum(name in matched for matched in top["matched"]) for name in coverage[0]["requirement"]}
+    assert dict(zip(coverage[0]["requirement"], coverage[0]["resumes"])) == expected
+    assert coverage[0]["resumes"].max() <= k
+
+    # Compare: only the top K can be picked
+    assert len(compare_select(app).options) == k
+    assert all(any(rid in option for rid in ids) for option in compare_select(app).options)
+
+    # CSV: exactly the top K
+    assert f"Download top {k} as CSV" in downloads(app)
+    assert csv_spy[-1]["resume_id"].tolist() == ids
+
+
+def test_compare_tab_compares_only_top_k_candidates(app):
+    match_tfidf(app, files=many_resumes(7), job=TOP_K_JOB)
+    ids = full_ranking(app, 7)["resume_id"].tolist()
+    show_top(app, 5)
+    compare_select(app).set_value(ids[3:5]).run()  # ranks 4 and 5
+    compare_button(app).click().run()
+    assert not app.exception and app.session_state["view"].endswith("Compare")
+    assert [c.split(" ", 1)[1] for c in app.dataframe[-1].value.columns] == ids[3:5]
+    show_top(app, 3)  # ranks 4 and 5 leave the top K: they leave the comparison too
+    assert compare_select(app).value == []
+    assert any("Select 2 more candidates" in i.value for i in app.info)
+    assert "Download Comparison CSV" not in downloads(app)
+
+
+def test_method_comparison_shows_only_top_k_rows(app):
+    match_tfidf(app, files=many_resumes(7), job=TOP_K_JOB)
+    full = full_ranking(app, 7)
+    run_id = next(b.key for b in app.button if b.key and b.key.startswith("rank_all_")).removeprefix("rank_all_")
+    # Stored rankings as _rank_all_methods saves them (here TF-IDF only, so no model is loaded)
+    app.session_state[f"_method_ranks_{run_id}"] = ({"tfidf": full[["resume_id", "rank", "score"]]}, {})
+    show_top(app, 4)
+    by_method = next(df.value for df in app.dataframe if "rank_spread" in df.value.columns)
+    assert by_method["resume_id"].tolist() == full["resume_id"].head(4).tolist()
+    assert by_method["rank_tfidf"].tolist() == [1, 2, 3, 4]  # ranks among all 7, unchanged
+
+
+def test_shortlist_outside_top_k_is_kept_but_left_out(app):
+    match_tfidf(app, files=many_resumes(7), job=TOP_K_JOB)
+    fifth = full_ranking(app, 7)["resume_id"].iloc[4]
+    show_top(app, 5)
+    shortlist_toggle(app, "rank", fifth).set_value(True).run()
+    show_top(app, 3)
+    app.pills(key="rank_filters").set_value(["Shortlisted"]).run()
+    assert any("No candidates match" in i.value for i in app.info)  # rank 5 is outside the top 3
+    show_top(app, 5)
+    assert app.dataframe[0].value["resume_id"].tolist() == [fifth]  # still shortlisted, not discarded
+
+
+def test_new_ranking_method_makes_a_new_top_k(app):
+    match_tfidf(app, files=many_resumes(7), job=TOP_K_JOB)
+    show_top(app, 3)
+    first_run = compare_select(app).key
+    click_match(app)  # a new run (here the same method) builds a new ranking and a new top-K selection
+    assert compare_select(app).key != first_run
+    assert app.number_input(key="top_k_results").value == 3 and len(app.dataframe[0].value) == 3
