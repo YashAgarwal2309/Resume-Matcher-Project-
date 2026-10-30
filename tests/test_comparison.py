@@ -357,3 +357,27 @@ def test_score_bins_cover_the_full_scale():
     bins = score_bins(pd.Series([0, 5, 12, 99.5, 100]))
     assert len(bins) == 10 and bins["candidates"].sum() == 5
     assert bins.loc[0, "candidates"] == 2 and bins.loc[9, "candidates"] == 2
+
+
+@pytest.mark.parametrize("method", ["tfidf", "glove", "sbert", "hybrid"])
+def test_top_k_limit_keeps_order_and_scores_for_every_method(method):
+    from resume_matcher.comparison import RESULT_LIMITS, limit_results
+    from resume_matcher.matcher import GloveMatcher, HybridMatcher, SbertMatcher
+    from tests.conftest import FAKE_GLOVE, FakeSentenceModel
+
+    texts = ["python developer databases", "nurse hospital patient", "chef kitchen", "teacher", "software developer"]
+    corpus = corpus_from_files([(f"r{i:02d}.txt", f"{texts[i % 5]} {i}") for i in range(12)])
+    matchers = {
+        "tfidf": lambda: TfidfMatcher(corpus),
+        "glove": lambda: GloveMatcher(corpus, FAKE_GLOVE),
+        "sbert": lambda: SbertMatcher(corpus, FakeSentenceModel()),
+        "hybrid": lambda: HybridMatcher(corpus, TfidfMatcher(corpus), GloveMatcher(corpus, FAKE_GLOVE),
+                                        SbertMatcher(corpus, FakeSentenceModel())),
+    }
+    results = matchers[method]().fit().match("python developer", top_k=len(corpus))
+    candidates = build_candidates(results, corpus, extract_requirements("python developer"), "python developer", method)
+    for label, k in RESULT_LIMITS.items():
+        shown = limit_results(candidates, k)
+        assert len(shown) == (len(candidates) if k is None else min(k, len(candidates)))
+        assert shown["resume_id"].tolist() == candidates["resume_id"].head(len(shown)).tolist()
+        assert shown["score"].tolist() == candidates["score"].head(len(shown)).tolist()

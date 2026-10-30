@@ -377,7 +377,7 @@ def test_every_uploaded_resume_is_ranked_and_limits_only_change_the_view(app):
     assert app.dataframe[0].value["rank"].tolist() == list(range(1, 26))  # page 1 of 2, 25 per page
     app.number_input(key="rank_page_2").set_value(2).run()
     assert app.dataframe[0].value["rank"].tolist() == list(range(26, 31))
-    app.button_group(key="rank_limit").set_value("All").run()
+    app.selectbox(key="top_k_results").select("All Resumes").run()
     assert "showing 60" in ranking_head(app)
     app.number_input(key="rank_page_3").set_value(3).run()
     assert app.dataframe[0].value["rank"].tolist() == list(range(51, 61))
@@ -386,7 +386,7 @@ def test_every_uploaded_resume_is_ranked_and_limits_only_change_the_view(app):
 
 def test_minimum_score_filter_is_optional_and_never_unranks(app):
     match_tfidf(app, files=many_resumes(20), job="Required: Python, Django, PostgreSQL, Docker and AWS.")
-    app.button_group(key="rank_limit").set_value("All").run()
+    app.selectbox(key="top_k_results").select("All Resumes").run()
     everyone = app.dataframe[0].value
     assert len(everyone) == 20 and (everyone["score"] == 0).any()  # zero-similarity resumes are kept
     app.number_input(key="rank_min_score").set_value(10.0).run()
@@ -431,3 +431,39 @@ def test_fresh_run_is_not_marked_as_outdated(app):
     assert not any("changed after this ranking" in i.value for i in app.info)
     app.selectbox(key="method").select("hybrid").run()  # Hybrid has weight inputs; switching marks the run outdated
     assert any("changed after this ranking" in i.value for i in app.info)
+
+
+# ---- "Show Top K Resumes"
+
+def test_show_top_k_resumes_selector_limits_the_view_only(app):
+    import pandas as pd
+
+    from resume_matcher.comparison import RESULT_LIMITS
+
+    match_tfidf(app, files=many_resumes(60), job="Required: Python, Django, PostgreSQL, Docker and AWS.")
+    selector = app.selectbox(key="top_k_results")
+    assert selector.label == "Show Top K Resumes"
+    assert selector.options == ["Top 5", "Top 10", "Top 20", "Top 30", "Top 50", "All Resumes"]
+    selector.select("All Resumes").run()
+    pages = [app.dataframe[0].value]
+    for page in (2, 3):
+        app.number_input(key="rank_page_3").set_value(page).run()
+        pages.append(app.dataframe[0].value)
+    full = pd.concat(pages)
+    assert full["rank"].tolist() == list(range(1, 61))  # "All Resumes": every processed resume
+    for label, k in RESULT_LIMITS.items():
+        app.selectbox(key="top_k_results").select(label).run()
+        expected = 60 if k is None else k
+        assert f"showing {expected}" in ranking_head(app)
+        shown = app.dataframe[0].value  # first page (25 per page)
+        assert shown["rank"].tolist() == list(range(1, min(expected, 25) + 1))
+        assert shown["score"].tolist() == full["score"].head(min(expected, 25)).tolist()  # scores unchanged
+        assert metrics(app)["Candidates ranked"] == "60"  # still ranked in full
+
+
+def test_top_k_choice_is_kept_when_the_page_changes(app):
+    match_tfidf(app, files=many_resumes(60), job="Required: Python, Django, PostgreSQL, Docker and AWS.")
+    app.selectbox(key="top_k_results").select("Top 50").run()
+    app.number_input(key="rank_page_2").set_value(2).run()
+    assert app.dataframe[0].value["rank"].tolist() == list(range(26, 51))
+    assert app.selectbox(key="top_k_results").value == "Top 50"

@@ -203,8 +203,10 @@ SORT_OPTIONS = {
     "name": "Candidate (A–Z)",
 }
 
-# Result-count choices in the dashboard; None shows every ranked resume (over several pages).
-RESULT_LIMITS = {"Top 30": 30, "Top 50": 50, "Top 100": 100, "All": None}
+# "Show Top K Resumes" choices in the dashboard; None shows every ranked resume (over several pages).
+# They only limit what is displayed: every processed resume is always ranked.
+RESULT_LIMITS = {"Top 5": 5, "Top 10": 10, "Top 20": 20, "Top 30": 30, "Top 50": 50, "All Resumes": None}
+DEFAULT_RESULT_LIMIT = "Top 30"
 
 
 def filter_candidates(

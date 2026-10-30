@@ -46,7 +46,7 @@ human reviewer can start with the most relevant ones.
 | On-disk cache of Sentence-BERT embeddings for the evaluation datasets (never for uploaded resumes) | ✅ Implemented |
 | Clear "unavailable" status when GloVe/SBERT resources are missing | ✅ Implemented |
 | Streamlit app: upload several resumes (PDF/DOCX/TXT/MD), one empty job-description box, method selector | ✅ Implemented |
-| Every readable resume is ranked; Top 30 / Top 50 / Top 100 / All selector and pages of 25 only change the view | ✅ Implemented |
+| Every readable resume is ranked; the "Show Top K Resumes" selector (Top 5 / 10 / 20 / 30 / 50 / All Resumes) and pages of 25 only change the view | ✅ Implemented |
 | PDF (`pypdf`) and Word .docx text extraction for uploaded resumes (DOCX read with the standard library) | ✅ Implemented |
 | Ranked results table with similarity score and contact-masked preview | ✅ Implemented |
 | Per-resume card: job requirements *Included in Resume* / *Not Found in Resume* | ✅ Implemented |
@@ -295,8 +295,9 @@ Hybrid 60 (`DEFAULT_STRONG_THRESHOLDS` in `resume_matcher/comparison.py`). They 
 Science resumes in `demo_samples/` from the rest for every method; they are a starting point, not a
 calibrated cut-off. Changing the threshold never changes the ranking.
 
-**Ranking tab.** *Results to show* (Top 30, Top 50, Top 100 or All) and pages of 25 only change what is
-displayed; every resume stays ranked. Search by file name or skill; sort by rank, similarity, coverage,
+**Ranking tab.** *Show Top K Resumes* (Top 5, 10, 20, 30, 50 or All Resumes; Top 30 by default), next to the
+result count above the table, and pages of 25 only change what is displayed; every resume stays ranked and
+keeps its score, for every method. Search by file name or skill; sort by rank, similarity, coverage,
 requirements found or name; filter to shortlisted candidates, strong matches, resumes that match chosen
 requirements, or an optional minimum similarity / coverage (0 = off). The table shows rank, similarity,
 coverage, matched / related / missing requirements and the method. Each candidate's card lists every
@@ -373,7 +374,7 @@ on the resumes plus the job description, that job words found in no resume lower
 factor, keyword stuffing, and that 4, 30, 50, 100, 250 and 1,000 resumes are all ranked with each score
 attached to the right file. `tests/test_coverage.py` covers exact / alias / related / missing requirements,
 evidence quotes, degree and years parsing, and that Flask is never counted as Django. The dashboard tests
-also upload 60 resumes and page through Top 30 and All, and check DOCX uploads, failed-file counts and the
+also upload 60 resumes and check every "Show Top K Resumes" option (row counts, unchanged ranks and scores, pages), and check DOCX uploads, failed-file counts and the
 optional minimum-score filter. `tests/test_embeddings.py` covers the GloVe table (one matrix, loaded once, malformed or incomplete files
 reported), word lookup, out-of-vocabulary and empty documents, optional IDF weighting, removal of the common
 direction, chunking (sections, limits, nothing lost), long resumes matched on later sections, normalized

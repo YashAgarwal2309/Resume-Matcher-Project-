@@ -28,6 +28,7 @@ import pandas as pd
 import streamlit as st
 
 from resume_matcher.comparison import (
+    DEFAULT_RESULT_LIMIT,
     DEFAULT_STRONG_THRESHOLDS,
     MATRIX_FOUND,
     MATRIX_RELATED,
@@ -981,8 +982,7 @@ def render_ranking_tab(run: MatchRun, threshold: float, shortlist: set[str], sel
     query = c1.text_input("Search", key="rank_search", placeholder="File name or skill",
                           icon=":material/search:")
     sort_key = c2.selectbox("Sort by", list(SORT_OPTIONS), format_func=SORT_OPTIONS.get, key="rank_sort")
-    c3, d4 = st.columns([1, 1.2], vertical_alignment="bottom")
-    filters = c3.pills("Show only", ["Shortlisted", "Strong matches"], selection_mode="multi", key="rank_filters")
+    filters = st.pills("Show only", ["Shortlisted", "Strong matches"], selection_mode="multi", key="rank_filters")
     d1, d2, d3 = st.columns([1.6, 0.8, 0.8], vertical_alignment="bottom")
     must_include: list[str] = []
     if run.requirement_names:
@@ -998,11 +998,6 @@ def render_ranking_tab(run: MatchRun, threshold: float, shortlist: set[str], sel
         "Min. coverage %", min_value=0.0, max_value=100.0, value=0.0, step=10.0, key="rank_min_coverage",
         help="Optional. Hides resumes that match fewer of the job's requirements; they stay ranked.",
     )
-    limit_label = d4.segmented_control(
-        "Results to show", list(RESULT_LIMITS), default="Top 30", key="rank_limit", required=True,
-        help="Only changes how many results are displayed; every resume is always ranked.",
-    ) or "Top 30"
-
     filtered = sort_candidates(
         filter_candidates(
             candidates, query=query, shortlist=shortlist, shortlisted_only="Shortlisted" in filters,
@@ -1011,24 +1006,32 @@ def render_ranking_tab(run: MatchRun, threshold: float, shortlist: set[str], sel
         ),
         sort_key,
     )
-    in_view = limit_results(filtered, RESULT_LIMITS[limit_label])
 
-    head, download = st.columns([1.5, 1.2], vertical_alignment="center")
-    head.markdown(
-        f"**{len(candidates)} resumes ranked · {METHOD_SHORT[run.method]}** "
-        f"<span style='color:#64748B'>· {len(filtered)} match the filters · showing {len(in_view)}</span>",
-        unsafe_allow_html=True,
-    )
-    download.download_button(
-        "Download results as CSV",
-        results_csv(in_view, shortlist),
-        file_name=f"resume_matches_{run.method}.csv",
-        mime="text/csv",
-        icon=":material/download:",
-        width="stretch",
-        help=f"All {len(in_view)} result(s) in view (every page), with both scores and the evidence. "
-        "Contains candidate data; store it carefully.",
-    )
+    with st.container(border=True, key="card_topk"):
+        heading = st.empty()  # filled once the Top K choice below is known
+        top_k, _, download = st.columns([1.2, 0.6, 1.2], vertical_alignment="bottom")
+        limit_label = top_k.selectbox(
+            "Show Top K Resumes", list(RESULT_LIMITS), index=list(RESULT_LIMITS).index(DEFAULT_RESULT_LIMIT),
+            key="top_k_results",
+            help="How many of the best-ranked resumes to show. Every resume is always ranked and scored; this "
+            "only changes the view (table, candidate details, charts and the results CSV).",
+        )
+        in_view = limit_results(filtered, RESULT_LIMITS[limit_label])
+        heading.markdown(
+            f"**{len(candidates)} resumes ranked · {METHOD_SHORT[run.method]}** "
+            f"<span style='color:#64748B'>· {len(filtered)} match the filters · showing {len(in_view)}</span>",
+            unsafe_allow_html=True,
+        )
+        download.download_button(
+            "Download results as CSV",
+            results_csv(in_view, shortlist),
+            file_name=f"resume_matches_{run.method}.csv",
+            mime="text/csv",
+            icon=":material/download:",
+            width="stretch",
+            help=f"All {len(in_view)} result(s) in view (every page), with both scores and the evidence. "
+            "Contains candidate data; store it carefully.",
+        )
     if in_view.empty:
         st.info("No candidates match the current search and filters.", icon=":material/filter_alt_off:")
         return in_view
