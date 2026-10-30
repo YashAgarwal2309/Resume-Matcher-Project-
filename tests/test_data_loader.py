@@ -11,7 +11,7 @@ from resume_matcher.data_loader import (
     prepare_corpus,
     read_resume_file,
 )
-from tests.conftest import make_pdf
+from tests.conftest import make_docx, make_pdf
 
 
 def test_load_valid_csv(resume_csv):
@@ -138,9 +138,30 @@ def test_read_pdf_resume_file():
 
 def test_unsupported_or_broken_files_are_rejected():
     with pytest.raises(DatasetError, match="not a supported file type"):
-        read_resume_file("cv.docx", b"anything")
+        read_resume_file("cv.doc", b"anything")  # old binary Word files are not supported
     with pytest.raises(DatasetError, match="Could not read"):
         read_resume_file("cv.pdf", b"this is not a pdf")
+    with pytest.raises(DatasetError, match="Could not read 'cv.docx' as a DOCX"):
+        read_resume_file("cv.docx", b"this is not a zip archive")
+
+
+def test_read_docx_resume_file():
+    text = read_resume_file("cv.docx", make_docx("Jane Doe, Data Scientist", "Skills: Python, SQL & Tableau", "Zürich"))
+    assert text.splitlines() == ["Jane Doe, Data Scientist", "Skills: Python, SQL & Tableau", "Zürich"]
+
+
+def test_docx_without_document_or_too_large_is_rejected(monkeypatch):
+    import io
+    import zipfile
+
+    empty = io.BytesIO()
+    with zipfile.ZipFile(empty, "w") as archive:
+        archive.writestr("other.xml", "<x/>")
+    with pytest.raises(DatasetError, match="Could not read"):
+        read_resume_file("cv.docx", empty.getvalue())
+    monkeypatch.setattr("resume_matcher.data_loader.MAX_DOCX_XML_BYTES", 10)
+    with pytest.raises(DatasetError, match="too large"):
+        read_resume_file("cv.docx", make_docx("A long enough paragraph"))
 
 
 def test_corpus_from_files_uses_file_names_as_ids():

@@ -48,6 +48,11 @@ header[data-testid="stHeader"] {background: transparent;}
 /* ---- KPI tiles */
 [data-testid="stMetric"] {background: var(--rm-surface); box-shadow: var(--rm-shadow);}
 [data-testid="stMetricLabel"] p {color: var(--rm-muted); font-weight: 600;}
+/* Let KPI labels wrap instead of being cut off on narrower screens. */
+[data-testid="stMetricLabel"], [data-testid="stMetricLabel"] div, [data-testid="stMetricLabel"] p {
+    white-space: normal !important; overflow: visible !important; text-overflow: clip !important;
+    word-break: normal !important; overflow-wrap: normal !important;
+}
 [data-testid="stMetricValue"] {font-size: 1.6rem; font-weight: 700; color: var(--rm-ink);}
 
 /* ---- Tabs */

@@ -118,10 +118,29 @@ def mask_contact_info(text: object) -> str:
     return PHONE_CANDIDATE_RE.sub(_mask_phone, text)
 
 
-def make_preview(text: object, max_chars: int = 300) -> str:
-    """Return a short, single-line, contact-masked preview of ``text``."""
-    text = normalize_whitespace(mask_contact_info(text))
+def _shorten(text: str, max_chars: int) -> str:
     if len(text) <= max_chars:
         return text
-    cut = text[:max_chars].rsplit(" ", 1)[0]
-    return cut + " ..."
+    return text[:max_chars].rsplit(" ", 1)[0] + " ..."
+
+
+# Characters kept beyond the preview when masking only the start of a long text. Masking is
+# local, so only a contact detail cut in half at the end of the masked part can differ from
+# masking the whole text, and that is never inside the visible preview.
+_PREVIEW_MARGIN = 200
+
+
+def make_preview(text: object, max_chars: int = 300) -> str:
+    """Return a short, single-line, contact-masked preview of ``text``.
+
+    Only the start of a long text is masked and cleaned (ranking all resumes builds one preview
+    each, and masking whole resumes was most of the ranking time).
+    """
+    text = _as_text(text)
+    window = max_chars * 3 + _PREVIEW_MARGIN
+    while window < len(text):
+        masked = normalize_whitespace(mask_contact_info(text[:window]))
+        if len(masked) >= max_chars + _PREVIEW_MARGIN:
+            return _shorten(masked, max_chars)
+        window *= 2
+    return _shorten(normalize_whitespace(mask_contact_info(text)), max_chars)

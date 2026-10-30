@@ -8,8 +8,10 @@ Usage:
 What it reports, per dataset, method and job description:
     * time to build the resume index and to answer one query
     * the category of the top-ranked resume
-    * Precision@K, using the resume's dataset category as a *proxy* relevance label
-      (a resume counts as relevant if its category is in the job's relevant_categories)
+    * Precision@K, Recall@K and NDCG@K, using the resume's dataset category as a *proxy* relevance
+      label (a resume counts as relevant if its category is in the job's relevant_categories)
+    * graded NDCG@5 on the seven demo resumes, whose relevance was labelled by hand
+      (demo_samples/relevance_labels.json; 3 = strong fit ... 0 = unrelated)
 
 Precision@K here is NOT a human-judged accuracy: the datasets have no relevance
 judgments between resumes and these job descriptions. Category agreement is
@@ -20,18 +22,43 @@ categories do not exist in a dataset are ranked but not scored.
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import sys
 import time
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
-from resume_matcher.config import METHOD_LABELS, PROJECT_ROOT, SAMPLE_JOBS_PATH, available_datasets, get_settings
-from resume_matcher.data_loader import DatasetError, load_resumes, load_sample_jobs
-from resume_matcher.matcher import MatcherError, MethodUnavailableError, create_matcher
+from resume_matcher.config import (
+    METHOD_GLOVE,
+    METHOD_HYBRID,
+    METHOD_LABELS,
+    METHOD_SBERT,
+    PROJECT_ROOT,
+    SAMPLE_JOBS_PATH,
+    available_datasets,
+    get_settings,
+)
+from resume_matcher.data_loader import (
+    DatasetError,
+    corpus_from_files,
+    load_resumes,
+    load_sample_jobs,
+    read_resume_file,
+)
+from resume_matcher.matcher import (
+    MatcherError,
+    MethodUnavailableError,
+    create_matcher,
+    load_glove_vectors,
+    load_sbert_model,
+)
 
 RESULTS_DIR = PROJECT_ROOT / "results"
+DEMO_DIR = PROJECT_ROOT / "demo_samples"
+DEMO_LABELS_PATH = DEMO_DIR / "relevance_labels.json"
 
 
 def precision_at_k(categories: list, relevant: set[str]) -> float:
@@ -39,6 +66,38 @@ def precision_at_k(categories: list, relevant: set[str]) -> float:
     if not categories:
         return 0.0
     return sum(1 for c in categories if c in relevant) / len(categories)
+
+
+def recall_at_k(gains_in_rank_order, k: int) -> float:
+    """Share of all relevant resumes (gain > 0) that appear in the top ``k``."""
+    gains = np.asarray(gains_in_rank_order, dtype=float)
+    total = (gains > 0).sum()
+    return float((gains[:k] > 0).sum() / total) if total else 0.0
+
+
+def ndcg_at_k(gains_in_rank_order, k: int) -> float:
+    """Normalized discounted cumulative gain of the top ``k`` (binary or graded gains)."""
+    gains = np.asarray(gains_in_rank_order, dtype=float)
+    discounts = 1.0 / np.log2(np.arange(2, k + 2))
+    dcg = ((2 ** gains[:k] - 1) * discounts[: len(gains[:k])]).sum()
+    ideal = np.sort(gains)[::-1][:k]
+    idcg = ((2**ideal - 1) * discounts[: len(ideal)]).sum()
+    return float(dcg / idcg) if idcg > 0 else 0.0
+
+
+_MODELS: dict[str, object] = {}
+
+
+def shared_models(method: str, settings) -> dict[str, object]:
+    """Load GloVe and Sentence-BERT at most once per evaluation run."""
+    kwargs = {}
+    if method in (METHOD_GLOVE, METHOD_HYBRID):
+        kwargs["word_vectors"] = load_glove_vectors(settings.glove_path)
+    if method in (METHOD_SBERT, METHOD_HYBRID):
+        if "sbert" not in _MODELS:
+            _MODELS["sbert"] = load_sbert_model(settings.sbert_model_name, settings.sbert_device)
+        kwargs["sbert_model"] = _MODELS["sbert"]
+    return kwargs
 
 
 def evaluate(methods: list[str], top_k: int, dataset_path: Path) -> pd.DataFrame:
@@ -58,7 +117,7 @@ def evaluate(methods: list[str], top_k: int, dataset_path: Path) -> pd.DataFrame
     for method in methods:
         start = time.perf_counter()
         try:
-            matcher = create_matcher(method, corpus, settings)
+            matcher = create_matcher(method, corpus, settings, **shared_models(method, settings))
         except (MethodUnavailableError, MatcherError) as exc:
             print(f"[{method}] UNAVAILABLE: {exc}")
             rows.append({"dataset": dataset, "method": method, "status": f"unavailable: {exc}"})
@@ -69,10 +128,12 @@ def evaluate(methods: list[str], top_k: int, dataset_path: Path) -> pd.DataFrame
 
         for job in jobs:
             start = time.perf_counter()
-            results = matcher.match(job["text"], top_k=top_k)
+            ranking = matcher.match(job["text"], top_k=len(corpus))  # full ranking, for recall
             query_seconds = time.perf_counter() - start
+            results = ranking.head(top_k)
 
             relevant = set(job.get("relevant_categories", [])) & known_categories
+            gains = ranking["category"].isin(relevant).astype(float).to_numpy()
             top1 = results["category"].iloc[0]
             rows.append(
                 {
@@ -87,6 +148,8 @@ def evaluate(methods: list[str], top_k: int, dataset_path: Path) -> pd.DataFrame
                     f"precision_at_{top_k}": (
                         round(precision_at_k(results["category"].tolist(), relevant), 3) if relevant else None
                     ),
+                    f"recall_at_{top_k}": round(recall_at_k(gains, top_k), 3) if relevant else None,
+                    f"ndcg_at_{top_k}": round(ndcg_at_k(gains, top_k), 3) if relevant else None,
                     "build_seconds": round(build_seconds, 3),
                     "query_seconds": round(query_seconds, 4),
                 }
@@ -107,6 +170,8 @@ def summarize(results: pd.DataFrame, top_k: int) -> pd.DataFrame:
             jobs=("job", "count"),
             labelled_jobs=("labelled", "sum"),
             mean_precision_at_k=(f"precision_at_{top_k}", "mean"),
+            mean_recall_at_k=(f"recall_at_{top_k}", "mean"),
+            mean_ndcg_at_k=(f"ndcg_at_{top_k}", "mean"),
             top1_relevant=("top1_hit", "sum"),
             build_seconds=("build_seconds", "first"),
             mean_query_seconds=("query_seconds", "mean"),
@@ -114,6 +179,32 @@ def summarize(results: pd.DataFrame, top_k: int) -> pd.DataFrame:
         .round(4)
         .reset_index()
     )
+
+
+def evaluate_labelled(methods: list[str], k: int = 5) -> pd.DataFrame:
+    """Graded NDCG@k on the demo resumes, using the hand-assigned labels in relevance_labels.json."""
+    if not DEMO_LABELS_PATH.is_file():
+        return pd.DataFrame()
+    labels = json.loads(DEMO_LABELS_PATH.read_text(encoding="utf-8"))["jobs"]
+    jobs = {j["title"]: j["text"] for j in load_sample_jobs(SAMPLE_JOBS_PATH)}
+    files = sorted((DEMO_DIR / "pdf").glob("*.pdf"))
+    corpus = corpus_from_files([(p.stem, read_resume_file(p.name, p.read_bytes())) for p in files])
+    settings = get_settings()
+    rows = []
+    for method in methods:
+        try:
+            matcher = create_matcher(method, corpus, settings, **shared_models(method, settings))
+        except (MethodUnavailableError, MatcherError) as exc:
+            rows.append({"method": method, "status": f"unavailable: {exc}"})
+            continue
+        for title, grades in labels.items():
+            if title not in jobs:
+                continue
+            ranking = matcher.match(jobs[title], top_k=len(corpus))
+            gains = ranking["resume_id"].map(grades).fillna(0).to_numpy()
+            rows.append({"method": method, "status": "ok", "job": title, f"ndcg_at_{k}": round(ndcg_at_k(gains, k), 3),
+                         "top1": ranking["resume_id"].iloc[0], "top1_grade": int(gains[0])})
+    return pd.DataFrame(rows)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -146,6 +237,16 @@ def main(argv: list[str] | None = None) -> int:
         RESULTS_DIR.mkdir(exist_ok=True)
         results.to_csv(RESULTS_DIR / "evaluation_per_job.csv", index=False)
         summary.to_csv(RESULTS_DIR / "evaluation_summary.csv", index=False)
+
+        labelled = evaluate_labelled(args.methods)
+        if not labelled.empty and (labelled["status"] == "ok").any():
+            ok_labelled = labelled[labelled["status"] == "ok"]
+            print("\nHand-labelled demo resumes (graded NDCG@5, 3 = strong fit ... 0 = unrelated):")
+            print(ok_labelled.groupby("method", sort=False).agg(
+                jobs=("job", "count"), mean_ndcg_at_5=("ndcg_at_5", "mean"),
+                top1_strong=("top1_grade", lambda g: int((g == 3).sum())),
+            ).round(3).to_string())
+            labelled.to_csv(RESULTS_DIR / "evaluation_labelled.csv", index=False)
         print(f"\nSaved CSV files to {RESULTS_DIR}")
     return 0
 

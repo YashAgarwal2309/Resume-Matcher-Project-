@@ -38,22 +38,26 @@ To rebuild the CSV and PDFs after editing a `.txt` resume:
 .venv/bin/python demo_samples/build_samples.py
 ```
 
-## Results (real run, 30 Oct 2026, the seven PDFs, top-k = 7)
+## Results (real run, 30 Oct 2026, the seven PDFs, all resumes ranked)
 
-| Rank | TF-IDF | GloVe | Sentence-BERT | Hybrid |
+| Rank | TF-IDF | GloVe | Sentence-BERT | Hybrid (relative) |
 |---|---|---|---|---|
-| 1 | resume_6 · 39.71 | resume_6 · 93.83 | resume_6 · 76.87 | resume_6 · 70.14 |
-| 2 | resume_4 · 32.12 | resume_4 · 91.63 | resume_1 · 74.32 | resume_4 · 65.84 |
-| 3 | resume_1 · 31.64 | resume_1 · 91.35 | resume_4 · 73.78 | resume_1 · 65.77 |
-| 4 | resume_2 · 7.02 | resume_2 · 88.63 | resume_2 · 61.61 | resume_2 · 52.42 |
-| 5 | resume_7 · 4.00 | resume_5 · 86.77 | resume_7 · 60.19 | resume_7 · 49.96 |
-| 6 | resume_5 · 1.76 | resume_7 · 85.70 | resume_5 · 54.05 | resume_5 · 47.53 |
-| 7 | resume_3 · 0.58 | resume_3 · 78.45 | resume_3 · 52.53 | resume_3 · 43.86 |
+| 1 | resume_6 · 30.13 | resume_6 · 90.83 | resume_6 · 79.75 | resume_6 · 100.00 |
+| 2 | resume_4 · 25.29 | resume_4 · 87.74 | resume_1 · 77.25 | resume_1 · 85.92 |
+| 3 | resume_1 · 23.63 | resume_1 · 86.45 | resume_4 · 74.71 | resume_4 · 85.63 |
+| 4 | resume_2 · 4.34 | resume_2 · 78.73 | resume_2 · 63.79 | resume_2 · 40.78 |
+| 5 | resume_7 · 3.08 | resume_5 · 74.21 | resume_7 · 59.51 | resume_7 · 27.74 |
+| 6 | resume_5 · 1.16 | resume_7 · 71.18 | resume_5 · 56.09 | resume_5 · 23.73 |
+| 7 | resume_3 · 0.56 | resume_3 · 50.13 | resume_3 · 53.47 | resume_3 · 0.00 |
 
-Score = cosine similarity × 100. Things worth pointing out:
+Score = document similarity (cosine similarity × 100); the dashboard shows requirement coverage separately. Things worth pointing out:
 
 - **Every method** puts the three Data Science resumes on top, the Python developer fourth and the HR resume last.
-- **GloVe** scores are bunched together (78–94) because averaging word vectors makes most documents look
-  similar. This matches the evaluation results, where GloVe was the weakest method on the tech dataset.
+- **GloVe** scores now spread from 50 to 91 because the direction all averaged word vectors share is removed;
+  before, they were bunched at 78–94.
+- **Sentence-BERT** reads every part of these resumes (6 of 7 are longer than its 512-word-piece limit) through
+  section-aware chunks; its best-matching section is shown in the app.
+- **Hybrid** scores are relative to these seven resumes (each method rescaled to 0–1, equal weights), so the
+  best one is 100 by construction; the methods' own scores are shown next to it in the app.
 - With only seven resumes, TF-IDF's IDF weights are learned from these seven documents, so its scores differ
   from a run on the full dataset.

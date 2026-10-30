@@ -1,0 +1,9 @@
+{
+  "description": "Graded relevance of the seven fictional demo resumes (demo_samples/resumes) for four sample jobs from data/sample_job_descriptions.json. 3 = strong fit (the role the resume describes), 2 = partial (core tools overlap), 1 = weak (same broad field), 0 = unrelated. The Data Scientist labels are the 'Expected fit' column of demo_samples/README.md; the other three were assigned on 30 Oct 2026 by reading each resume against the job text. Only seven resumes, so treat results as a sanity check, not an accuracy measure.",
+  "jobs": {
+    "Data Scientist / Machine Learning Engineer": {"resume_1": 3, "resume_2": 2, "resume_3": 0, "resume_4": 3, "resume_5": 1, "resume_6": 3, "resume_7": 1},
+    "Backend Developer": {"resume_1": 1, "resume_2": 3, "resume_3": 0, "resume_4": 1, "resume_5": 3, "resume_6": 1, "resume_7": 0},
+    "Business Analyst (IT)": {"resume_1": 1, "resume_2": 0, "resume_3": 0, "resume_4": 1, "resume_5": 0, "resume_6": 0, "resume_7": 3},
+    "AI Engineer (NLP)": {"resume_1": 2, "resume_2": 1, "resume_3": 0, "resume_4": 3, "resume_5": 0, "resume_6": 3, "resume_7": 0}
+  }
+}

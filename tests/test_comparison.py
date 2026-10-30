@@ -183,7 +183,9 @@ def test_sorting(ranked):
     by_reqs = sort_candidates(candidates, "requirements")
     assert by_reqs["matched_count"].is_monotonic_decreasing
     assert sort_candidates(candidates, "name")["resume_id"].tolist() == sorted(candidates["resume_id"])
-    assert set(SORT_OPTIONS) == {"rank", "score_asc", "requirements", "name"}
+    by_coverage = sort_candidates(candidates, "coverage")
+    assert by_coverage["coverage"].is_monotonic_decreasing
+    assert set(SORT_OPTIONS) == {"rank", "score_asc", "coverage", "requirements", "name"}
     with pytest.raises(ValueError):
         sort_candidates(candidates, "age")
 
@@ -319,7 +321,8 @@ def test_comparison_csv_has_one_row_per_candidate(ranked):
     assert table["candidate"].tolist() == selected["resume_id"].tolist()
     assert list(table.columns) == [
         "candidate", "rank", "similarity_score", "cosine_similarity", "matching_method", "requirements_found",
-        "matched_skills", "unconfirmed_skills", "experience_mentions", "education_mentions", "shortlisted",
+        "coverage_percent", "matched_skills", "unconfirmed_skills", "related_unverified", "evidence",
+        "experience_mentions", "education_mentions", "shortlisted",
     ]
     alice = table.set_index("candidate").loc["alice.txt"]
     assert alice["similarity_score"] == pytest.approx(candidates.set_index("resume_id").loc["alice.txt", "score"])

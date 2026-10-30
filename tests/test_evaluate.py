@@ -55,3 +55,25 @@ def test_available_datasets(monkeypatch, tmp_path):
 
     monkeypatch.setenv("RESUME_DATA_PATH", str(a))
     assert config.available_datasets() == {"Custom (a.csv)": a}
+
+
+def test_recall_and_ndcg():
+    assert evaluate.recall_at_k([1, 0, 1, 0, 1], 2) == pytest.approx(1 / 3)
+    assert evaluate.recall_at_k([0, 0], 2) == 0.0
+    assert evaluate.ndcg_at_k([1, 1, 0], 3) == pytest.approx(1.0)
+    assert evaluate.ndcg_at_k([0, 1, 1], 3) < 1.0
+    assert evaluate.ndcg_at_k([3, 2, 0], 3) == pytest.approx(1.0) and evaluate.ndcg_at_k([0, 2, 3], 3) < 0.8
+
+
+def test_evaluate_reports_recall_and_ndcg(resume_csv, sample_jobs):
+    results = evaluate.evaluate(["tfidf"], top_k=2, dataset_path=resume_csv)
+    nurse = results[results["job"] == "Nurse"].iloc[0]
+    assert nurse["recall_at_2"] == 1.0 and 0 < nurse["ndcg_at_2"] <= 1
+    assert {"mean_recall_at_k", "mean_ndcg_at_k"} <= set(evaluate.summarize(results, 2).columns)
+
+
+def test_labelled_demo_evaluation_uses_hand_labels():
+    table = evaluate.evaluate_labelled(["tfidf"])
+    ok = table[table["status"] == "ok"]
+    assert len(ok) == 4 and ok["ndcg_at_5"].between(0, 1).all()
+    assert set(ok["top1"]) <= {f"resume_{i}" for i in range(1, 8)}

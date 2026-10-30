@@ -96,3 +96,22 @@ def make_pdf(text: str) -> bytes:
     out += b"".join(b"%010d 00000 n \n" % offset for offset in offsets)
     out += b"trailer\n<< /Size %d /Root 1 0 R >>\nstartxref\n%d\n%%%%EOF\n" % (len(objects) + 1, xref)
     return bytes(out)
+
+
+def make_docx(*paragraphs: str) -> bytes:
+    """A minimal Word .docx file with one paragraph per argument (tests need no .docx files on disk)."""
+    import io
+    import zipfile
+    from xml.sax.saxutils import escape
+
+    body = "".join(f"<w:p><w:r><w:t xml:space=\"preserve\">{escape(p)}</w:t></w:r></w:p>" for p in paragraphs)
+    document = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+        f"<w:body>{body}</w:body></w:document>"
+    )
+    out = io.BytesIO()
+    with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("[Content_Types].xml", '<?xml version="1.0"?><Types/>')
+        archive.writestr("word/document.xml", document)
+    return out.getvalue()

@@ -3,14 +3,17 @@
 The CSV loader does not assume fixed column names. It looks for well-known
 names first (``Resume_str``, ``Category``, ``ID`` in the Kaggle dataset)
 and falls back to sensible guesses, so other CSV files also work.
-Uploaded resumes (PDF, TXT or MD) go through the same cleaning as the dataset.
+Uploaded resumes (PDF, DOCX, TXT or MD) go through the same cleaning as the dataset.
 """
 
 from __future__ import annotations
 
+import html
 import io
 import json
 import logging
+import re
+import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -28,7 +31,15 @@ logger = logging.getLogger(__name__)
 TEXT_COLUMN_CANDIDATES = ("resume_str", "resume_text", "resume", "text", "content", "cv")
 CATEGORY_COLUMN_CANDIDATES = ("category", "job_category", "label", "role", "position")
 ID_COLUMN_CANDIDATES = ("id", "resume_id", "candidate_id")
-RESUME_FILE_TYPES = ("pdf", "txt", "md")
+RESUME_FILE_TYPES = ("pdf", "docx", "txt", "md")
+
+# A .docx file is a zip archive; its text is in word/document.xml. The XML is read with plain
+# regular expressions (no XML parser, so no entity expansion), and its unpacked size is capped
+# so a small "zip bomb" upload cannot use up memory.
+MAX_DOCX_XML_BYTES = 30 * 1024 * 1024
+_DOCX_PARAGRAPH_END_RE = re.compile(r"</w:p>|<w:br\b[^>]*/>|<w:cr\b[^>]*/>")
+_DOCX_TAB_RE = re.compile(r"<w:tab\b[^>]*/>")
+_DOCX_TEXT_RE = re.compile(r"<w:t(?:\s[^>]*)?>([^<]*)</w:t>|(\n|\t)")
 
 
 class DatasetError(Exception):
@@ -210,15 +221,33 @@ def load_sample_jobs(path: str | Path) -> list[dict[str, str]]:
     return jobs
 
 
+def read_docx(name: str, data: bytes) -> str:
+    """Text of a Word .docx file: paragraphs, line breaks and tabs, without formatting."""
+    try:
+        with zipfile.ZipFile(io.BytesIO(data)) as archive:
+            info = archive.getinfo("word/document.xml")
+            if info.file_size > MAX_DOCX_XML_BYTES:
+                raise DatasetError(f"'{name}' is too large to read as a DOCX file.")
+            xml = archive.read(info).decode("utf-8", errors="replace")
+    except (zipfile.BadZipFile, KeyError, OSError, ValueError) as exc:
+        raise DatasetError(f"Could not read '{name}' as a DOCX file: {exc}") from exc
+    xml = _DOCX_PARAGRAPH_END_RE.sub("\n", _DOCX_TAB_RE.sub("\t", xml))
+    parts = (text if text else sep for text, sep in _DOCX_TEXT_RE.findall(xml))
+    return html.unescape("".join(parts))
+
+
 def read_resume_file(name: str, data: bytes) -> str:
-    """Return the text of one uploaded resume file (.pdf, .txt or .md).
+    """Return the text of one uploaded resume file (.pdf, .docx, .txt or .md).
 
     Raises DatasetError for unsupported or unreadable files. A scanned PDF (only
     images, no text layer) returns an empty string, since we do not run OCR.
+    Old binary Word files (.doc) are not supported.
     """
     suffix = Path(name).suffix.lower().lstrip(".")
     if suffix not in RESUME_FILE_TYPES:
         raise DatasetError(f"'{name}' is not a supported file type ({', '.join(RESUME_FILE_TYPES)}).")
+    if suffix == "docx":
+        return read_docx(name, data)
     if suffix != "pdf":
         return decode_text_file(data)
 

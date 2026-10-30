@@ -8,22 +8,47 @@ resume text; the similarity scores are passed through unchanged.
     selected = select_candidates(candidates, ["a.pdf", "b.pdf"])   # 2 to 5 resume IDs
     comparison_summary(selected), skill_matrix(selected), comparison_csv(selected, shortlist)
 
+Two separate measures are kept side by side and never mixed: ``score`` is the matcher's document
+similarity (cosine x 100); ``coverage`` is the percent of the job's requirements the resume shows
+evidence for (coverage.py). Neither is a hiring probability.
+
 No UI code and no file or network access: the app decides what to show and keeps any
 state (selection, shortlist) in the user's session only.
 """
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
 
-from resume_matcher.config import METHOD_GLOVE, METHOD_HYBRID, METHOD_LABELS, METHOD_SBERT, METHOD_SHORT, METHOD_TFIDF
+from resume_matcher.config import (
+    METHOD_GLOVE,
+    METHOD_HYBRID,
+    METHOD_LABELS,
+    METHOD_SBERT,
+    METHOD_SHORT,
+    METHOD_TFIDF,
+)
+from resume_matcher.coverage import (
+    STATUS_MATCHED,
+    STATUS_RELATED,
+    STATUS_SEMANTIC,
+    RequirementCheck,
+    assess,
+    extract_education,
+    extract_experience,
+    job_requirements,
+)
 from resume_matcher.data_loader import ResumeCorpus
-from resume_matcher.preprocessing import STOP_WORDS, _as_text, mask_contact_info, normalize_whitespace, tokenize
-from resume_matcher.skills import Requirement, compare_requirements, normalize_for_matching
+from resume_matcher.preprocessing import (
+    STOP_WORDS,
+    _as_text,
+    mask_contact_info,
+    tokenize,
+)
+from resume_matcher.skills import Requirement, normalize_for_matching
 
 MIN_COMPARE = 2
 MAX_COMPARE = 5
@@ -34,8 +59,8 @@ NOT_AVAILABLE = "Not available"
 # These defaults separate the three Data Science resumes in demo_samples/ from the rest for every
 # method; they are a starting point that the user can change in the app, not a calibrated cut-off.
 DEFAULT_STRONG_THRESHOLDS = {
-    METHOD_TFIDF: 25.0,
-    METHOD_GLOVE: 90.0,
+    METHOD_TFIDF: 20.0,
+    METHOD_GLOVE: 82.0,
     METHOD_SBERT: 70.0,
     METHOD_HYBRID: 60.0,
 }
@@ -44,39 +69,12 @@ DEFAULT_STRONG_THRESHOLDS = {
 CANDIDATE_COLUMNS = [
     "rank", "resume_id", "score", "cosine_similarity", "method",
     "requirements", "matched", "unconfirmed", "matched_count", "requirement_count",
+    "coverage", "related", "checks",
     "experience", "education", "keywords", "preview", "text",
 ]
 
 # ---- Evidence taken from the resume text (shown as quotes, never inferred)
-
-_NUMBER_WORDS = (
-    "one and a half|two and a half|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|"
-    "fifteen|twenty"
-)
-_EXPERIENCE_RE = re.compile(
-    r"(?:\b(?:about|around|over|more than|nearly|almost|approximately|a little over|close to)\s+)?"
-    rf"\b(?:\d{{1,2}}(?:\.\d)?\s*\+?|(?:{_NUMBER_WORDS})\b\+?)\s*(?:years?|yrs?)\b"
-    r"(?:\s+[\w-]+){0,3}?\s+experience\b"
-    rf"|\bexperience\s+of\s+(?:about\s+|over\s+)?(?:\d{{1,2}}\s*\+?|(?:{_NUMBER_WORDS})\b)\s*(?:years?|yrs?)\b",
-    re.IGNORECASE,
-)
-_MAX_EVIDENCE = 3
-
-# Degree names. Abbreviations are case-sensitive and need their dots ("B.E.", "M.S."), so ordinary
-# words such as "be", "ms" (MS Excel) or "ba" are not mistaken for degrees.
-_DEGREE_RE = re.compile(
-    r"(?<![A-Za-z])(?:"
-    r"Ph\.?\s?D\b\.?|Doctorate\b|"
-    r"[Mm]aster'?s?(?:\s+of|\s+in|\s+degree)\b|M\.\s?Tech\b|MTech\b|M\.\s?Sc\b|MSc\b|M\.S\.|M\.E\.|MBA\b|MCA\b|"
-    r"M\.\s?Com\b|M\.A\.|"
-    r"[Bb]achelor'?s?(?:\s+of|\s+in|\s+degree)\b|B\.\s?Tech\b|BTech\b|B\.\s?Sc\b|BSc\b|B\.S\.|B\.E\b\.?|BCA\b|"
-    r"BBA\b|B\.\s?Com\b|B\.A\.|"
-    r"[Dd]iploma\s+in\b|[Aa]ssociate'?s?\s+degree\b"
-    r")"
-)
-# A degree mention ends at a field separator, a full stop followed by a space, or a year.
-_DEGREE_END_RE = re.compile(r"\s*(?:[|;•▪●\n]|\.\s|\b(?:19|20)\d\d\b)")
-_MAX_DEGREE_CHARS = 80
+# extract_experience and extract_education live in coverage.py and are re-exported here.
 
 # Words that appear in most job descriptions and resumes and say nothing about fit.
 _GENERIC_KEYWORDS = frozenset(
@@ -89,39 +87,6 @@ _GENERIC_KEYWORDS = frozenset(
     )
 )
 _MAX_KEYWORDS = 10
-
-
-def extract_experience(text: object) -> tuple[str, ...]:
-    """Phrases that state years of experience ("4 years of experience"), as written in the resume.
-
-    Only explicit statements are returned; nothing is computed from employment dates.
-    """
-    found: list[str] = []
-    for match in _EXPERIENCE_RE.finditer(normalize_whitespace(_as_text(text))):
-        phrase = match.group().strip()
-        if phrase.lower() not in (f.lower() for f in found):
-            found.append(phrase)
-        if len(found) == _MAX_EVIDENCE:
-            break
-    return tuple(found)
-
-
-def extract_education(text: object) -> tuple[str, ...]:
-    """Degree mentions such as "B.Tech, Computer Engineering", cut at the next separator or year."""
-    text = normalize_whitespace(_as_text(text))
-    found: list[str] = []
-    for match in _DEGREE_RE.finditer(text):
-        tail = text[match.start() : match.start() + _MAX_DEGREE_CHARS + 1]
-        end = _DEGREE_END_RE.search(tail, len(match.group()))
-        mention = tail[: end.start()] if end else tail
-        if len(mention) > _MAX_DEGREE_CHARS:
-            mention = mention[:_MAX_DEGREE_CHARS].rsplit(" ", 1)[0]
-        mention = re.sub(r"\s+([,.;:)])", r"\1", mention).strip(" ,.-(")
-        if mention and not any(mention in f or f in mention for f in found):
-            found.append(mention)
-        if len(found) == _MAX_EVIDENCE:
-            break
-    return tuple(found)
 
 
 def shared_keywords(job_description: object, resume_text: object, exclude: tuple[str, ...] = ()) -> tuple[str, ...]:
@@ -160,18 +125,23 @@ def build_candidates(
     job_description: str,
     method: str,
 ) -> pd.DataFrame:
-    """Add requirement checks and resume evidence to the ranking returned by ``BaseMatcher.match``.
+    """Add requirement coverage and resume evidence to the ranking returned by ``BaseMatcher.match``.
 
     ``rank``, ``resume_id``, ``score`` and ``cosine_similarity`` are copied as they are; the
-    other columns only explain the ranking.
+    other columns only explain the ranking. ``requirements`` are the job's skill requirements
+    (skills.extract_requirements); the degree level and years of experience it asks for are
+    read from ``job_description`` and checked as well. ``unconfirmed`` lists every requirement
+    that is not matched (related or missing); ``related`` the ones with a related skill only.
     """
     if method not in METHOD_LABELS:
         raise ValueError(f"Unknown method '{method}'.")
-    texts = corpus.df.set_index("resume_id")["text"]
+    job = job_requirements(job_description, skills=requirements)
+    texts = dict(zip(corpus.df["resume_id"], corpus.df["text"]))
     rows = []
     for row in results.itertuples(index=False):
         text = _as_text(texts.get(row.resume_id, ""))
-        comparison = compare_requirements(requirements, text)
+        report = assess(job, text)
+        matched = report.matched
         rows.append(
             {
                 "rank": int(row.rank),
@@ -179,14 +149,17 @@ def build_candidates(
                 "score": float(row.score),
                 "cosine_similarity": float(row.cosine_similarity),
                 "method": method,
-                "requirements": tuple(r.name for r in requirements),
-                "matched": comparison.included,
-                "unconfirmed": comparison.missing,
-                "matched_count": len(comparison.included),
-                "requirement_count": comparison.total,
+                "requirements": job.names,
+                "matched": matched,
+                "unconfirmed": tuple(c.name for c in report.checks if c.status != STATUS_MATCHED),
+                "matched_count": len(matched),
+                "requirement_count": report.total,
+                "coverage": report.score,
+                "related": report.related,
+                "checks": report.checks,
                 "experience": extract_experience(text),
                 "education": extract_education(text),
-                "keywords": shared_keywords(job_description, text, exclude=comparison.included),
+                "keywords": shared_keywords(job_description, text, exclude=matched),
                 "preview": row.preview,
                 "text": text,
             }
@@ -203,28 +176,35 @@ class RunSummary:
     strong_matches: int
     threshold: float
     average_score: float | None  # None when nothing was ranked
+    average_coverage: float | None = None  # None when the job lists no checkable requirements
 
 
 def summarize_run(candidates: pd.DataFrame, resumes_processed: int, threshold: float) -> RunSummary:
     """KPIs from the ranked candidates. A strong match has a similarity score >= ``threshold``."""
     scores = candidates["score"].astype(float)
+    coverage = candidates["coverage"].dropna().astype(float) if "coverage" in candidates else pd.Series(dtype=float)
     return RunSummary(
         resumes_processed=int(resumes_processed),
         candidates_ranked=len(candidates),
         strong_matches=int((scores >= threshold).sum()),
         threshold=float(threshold),
         average_score=float(scores.mean()) if len(scores) else None,
+        average_coverage=float(coverage.mean()) if len(coverage) else None,
     )
 
 
 # ---- Searching, filtering and sorting the ranking
 
 SORT_OPTIONS = {
-    "rank": "Rank (best first)",
+    "rank": "Rank (highest similarity first)",
     "score_asc": "Similarity score (lowest first)",
+    "coverage": "Requirement coverage (highest first)",
     "requirements": "Requirements found (most first)",
     "name": "Candidate (A–Z)",
 }
+
+# Result-count choices in the dashboard; None shows every ranked resume (over several pages).
+RESULT_LIMITS = {"Top 30": 30, "Top 50": 50, "Top 100": 100, "All": None}
 
 
 def filter_candidates(
@@ -235,8 +215,14 @@ def filter_candidates(
     strong_only: bool = False,
     threshold: float = 0.0,
     must_include: tuple[str, ...] | list[str] = (),
+    min_score: float = 0.0,
+    min_coverage: float = 0.0,
 ) -> pd.DataFrame:
-    """Rows matching every active filter. ``query`` searches file names and requirement names."""
+    """Rows matching every active filter. ``query`` searches file names and requirement names.
+
+    ``min_score`` and ``min_coverage`` are optional floors (0 keeps everything); resumes below
+    them stay ranked, they are only hidden from this view.
+    """
     keep = pd.Series(True, index=candidates.index)
     query = query.strip().lower()
     if query:
@@ -251,7 +237,23 @@ def filter_candidates(
         keep &= candidates["score"] >= threshold
     for name in must_include:
         keep &= candidates["matched"].map(lambda matched, name=name: name in matched)
+    if min_score > 0:
+        keep &= candidates["score"] >= min_score
+    if min_coverage > 0:
+        keep &= candidates["coverage"].fillna(0) >= min_coverage
     return candidates[keep]
+
+
+def limit_results(candidates: pd.DataFrame, limit: int | None) -> pd.DataFrame:
+    """The first ``limit`` rows (all of them when ``limit`` is None). Only limits what is shown."""
+    return candidates if limit is None else candidates.head(limit)
+
+
+def paginate(candidates: pd.DataFrame, page: int, page_size: int) -> tuple[pd.DataFrame, int]:
+    """Rows of ``page`` (1-based, clamped to the valid range) and the number of pages (at least 1)."""
+    pages = max(1, -(-len(candidates) // page_size))
+    page = min(max(1, int(page)), pages)
+    return candidates.iloc[(page - 1) * page_size : page * page_size], pages
 
 
 def sort_candidates(candidates: pd.DataFrame, key: str) -> pd.DataFrame:
@@ -260,6 +262,10 @@ def sort_candidates(candidates: pd.DataFrame, key: str) -> pd.DataFrame:
         return candidates.sort_values("rank", kind="stable")
     if key == "score_asc":
         return candidates.sort_values(["score", "rank"], ascending=[True, False], kind="stable")
+    if key == "coverage":
+        return candidates.sort_values(
+            ["coverage", "rank"], ascending=[False, True], kind="stable", na_position="last"
+        )
     if key == "requirements":
         return candidates.sort_values(["matched_count", "rank"], ascending=[False, True], kind="stable")
     if key == "name":
@@ -322,6 +328,31 @@ def skill_matrix(selected: pd.DataFrame) -> pd.DataFrame:
     names = requirement_names(selected)
     data = {row.resume_id: [name in row.matched for name in names] for row in selected.itertuples(index=False)}
     return pd.DataFrame(data, index=pd.Index(names, name="requirement"))
+
+
+MATRIX_FOUND = "Found"
+MATRIX_RELATED = "Related (unverified)"
+MATRIX_SEMANTIC = "Semantically related (unverified)"
+MATRIX_NOT_FOUND = "Not found"
+_MATRIX_STATES = {STATUS_MATCHED: MATRIX_FOUND, STATUS_RELATED: MATRIX_RELATED, STATUS_SEMANTIC: MATRIX_SEMANTIC}
+
+
+def status_matrix(selected: pd.DataFrame) -> pd.DataFrame:
+    """Like skill_matrix, with the states Found, Related (unverified), Semantically related
+    (unverified, only when semantic evidence was added to the checks) and Not found."""
+    names = requirement_names(selected)
+    data = {}
+    for row in selected.itertuples(index=False):
+        status = {check.name: check.status for check in row.checks}
+        data[row.resume_id] = [_MATRIX_STATES.get(status.get(name), MATRIX_NOT_FOUND) for name in names]
+    return pd.DataFrame(data, index=pd.Index(names, name="requirement"))
+
+
+def evidence_lines(checks: tuple[RequirementCheck, ...], limit: int | None = None) -> list[str]:
+    """"Requirement: quote" for each matched or related requirement that has evidence."""
+    shown = (STATUS_MATCHED, STATUS_RELATED, STATUS_SEMANTIC)
+    lines = [f"{c.name}: {c.evidence}" for c in checks if c.evidence and c.status in shown]
+    return lines if limit is None else lines[:limit]
 
 
 @dataclass(frozen=True)
@@ -442,11 +473,15 @@ def comparison_table(selected: pd.DataFrame, shortlist: set[str] | frozenset[str
                 "cosine_similarity": row.cosine_similarity,
                 "matching_method": METHOD_LABELS[row.method],
                 "requirements_found": f"{row.matched_count} of {row.requirement_count}" if row.requirement_count else "",
+                "coverage_percent": "" if row.coverage is None else row.coverage,
                 "matched_skills": _join(row.matched),
                 "unconfirmed_skills": _join(row.unconfirmed),
+                "related_unverified": _join(row.related),
+                "evidence": " | ".join(evidence_lines(row.checks)),
                 "experience_mentions": _join(row.experience) or NOT_AVAILABLE,
                 "education_mentions": _join(row.education) or NOT_AVAILABLE,
                 "shortlisted": "yes" if row.resume_id in shortlist else "no",
+                **_method_columns(row),
             }
         )
     return pd.DataFrame(rows)
@@ -468,9 +503,62 @@ def comparison_csv(selected: pd.DataFrame, shortlist: set[str] | frozenset[str] 
 
 
 def skill_matrix_csv(selected: pd.DataFrame) -> bytes:
-    """The skill matrix as CSV: one row per requirement, "found" / "not found" per candidate."""
-    matrix = skill_matrix(selected).replace({True: "found", False: "not found"})
+    """The skill matrix as CSV: one row per requirement, "found" / "related (unverified)" /
+    "not found" per candidate."""
+    matrix = status_matrix(selected).map(str.lower)
     return to_csv_bytes(matrix, index=True)
+
+
+def results_table(candidates: pd.DataFrame, shortlist: set[str] | frozenset[str] = frozenset()) -> pd.DataFrame:
+    """The ranking export: one row per candidate with both scores, the requirement check and evidence.
+
+    The first columns are those of the earlier results CSV (rank, resume_id, score,
+    cosine_similarity, preview, method); the coverage columns follow.
+    """
+    rows = []
+    for row in candidates.itertuples(index=False):
+        rows.append(
+            {
+                "rank": row.rank,
+                "resume_id": row.resume_id,
+                "score": round(row.score, 2),
+                "cosine_similarity": row.cosine_similarity,
+                "preview": row.preview,
+                "method": row.method,
+                "coverage_percent": "" if row.coverage is None else row.coverage,
+                "requirements_matched": f"{row.matched_count} of {row.requirement_count}" if row.requirement_count else "",
+                "matched_requirements": _join(row.matched),
+                "related_unverified": _join(row.related),
+                "missing_requirements": _join([n for n in row.unconfirmed if n not in row.related]),
+                "evidence": " | ".join(evidence_lines(row.checks)),
+                "shortlisted": "yes" if row.resume_id in shortlist else "no",
+                **_method_columns(row),
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+# Optional per-method columns a run can carry (see app.add_method_details), and their export names.
+METHOD_DETAIL_COLUMNS = {
+    "tfidf_score": "tfidf_similarity", "glove_score": "glove_similarity", "sbert_score": "sbert_similarity",
+    "sbert_document": "sbert_whole_resume_similarity", "best_section": "sbert_best_section",
+}
+
+
+def _method_columns(row) -> dict[str, object]:
+    out = {}
+    for column, export in METHOD_DETAIL_COLUMNS.items():
+        value = getattr(row, column, None)
+        if value is not None:
+            out[export] = "" if isinstance(value, float) and value != value else value
+    semantic = [c.name for c in getattr(row, "checks", ()) if c.status == STATUS_SEMANTIC]
+    if semantic:
+        out["semantically_related"] = _join(semantic)
+    return out
+
+
+def results_csv(candidates: pd.DataFrame, shortlist: set[str] | frozenset[str] = frozenset()) -> bytes:
+    return to_csv_bytes(results_table(candidates, shortlist))
 
 
 def masked_text(text: object) -> str:
@@ -484,3 +572,42 @@ def score_bins(scores: pd.Series | np.ndarray, width: int = 10) -> pd.DataFrame:
     counts, _ = np.histogram(np.clip(np.asarray(scores, dtype=float), 0, 100), bins=edges)
     labels = [f"{lo}–{hi}" for lo, hi in zip(edges[:-1], edges[1:])]
     return pd.DataFrame({"range": labels, "start": edges[:-1], "candidates": counts})
+
+
+# ---- The same resumes ranked by several methods
+
+
+def combine_method_rankings(results: dict[str, pd.DataFrame]) -> pd.DataFrame:
+    """One row per resume with its rank and score under each method (``BaseMatcher.match`` output).
+
+    Resumes are joined by ID, never by position, so a resume keeps its own numbers under every
+    method. A method that ranked fewer resumes leaves the others' cells empty instead of guessing.
+    """
+    table = None
+    for method, ranking in results.items():
+        part = ranking[["resume_id", "rank", "score"]].rename(
+            columns={"rank": f"rank_{method}", "score": f"score_{method}"}
+        )
+        table = part if table is None else table.merge(part, on="resume_id", how="outer")
+    if table is None:
+        return pd.DataFrame(columns=["resume_id"])
+    ranks = table[[f"rank_{m}" for m in results]]
+    table["rank_spread"] = ranks.max(axis=1) - ranks.min(axis=1)
+    return table
+
+
+def ranking_agreement(table: pd.DataFrame, methods: list[str], top: int = 10) -> pd.DataFrame:
+    """Pairwise agreement between methods: Kendall's tau over all resumes and overlap of the top ``top``."""
+    from scipy.stats import kendalltau
+
+    rows = []
+    for i, a in enumerate(methods):
+        for b in methods[i + 1 :]:
+            both = table[[f"rank_{a}", f"rank_{b}"]].dropna()
+            tau = kendalltau(both.iloc[:, 0], both.iloc[:, 1]).statistic if len(both) > 1 else np.nan
+            k = min(top, len(both))
+            top_a = set(both.nsmallest(k, f"rank_{a}").index)
+            top_b = set(both.nsmallest(k, f"rank_{b}").index)
+            rows.append({"methods": f"{METHOD_SHORT[a]} vs {METHOD_SHORT[b]}", "kendall_tau": round(float(tau), 3),
+                         f"top_{top}_overlap": f"{len(top_a & top_b)} of {k}"})
+    return pd.DataFrame(rows)

@@ -27,6 +27,7 @@ from resume_matcher.matcher import (
     create_matcher,
     load_glove_vectors,
     method_status,
+    minmax_normalize,
     similarity_to_score,
 )
 from tests.conftest import FAKE_GLOVE, FakeSentenceModel
@@ -291,22 +292,56 @@ def make_hybrid(corpus):
     ).fit()
 
 
-def test_hybrid_is_equal_average_of_all_three_methods(corpus):
+def test_hybrid_is_equal_average_of_the_normalized_methods(corpus):
     hybrid = make_hybrid(corpus)
     tfidf, glove, sbert = hybrid.parts
-    expected = (tfidf.similarities(JOB) + glove.similarities(JOB) + sbert.similarities(JOB)) / 3
+    parts = [tfidf.similarities(JOB), glove.similarities(JOB), sbert.similarities(JOB)]
+    expected = sum(minmax_normalize(p) for p in parts) / 3
+    np.testing.assert_allclose(hybrid.similarities(JOB), expected, rtol=1e-6)
+    assert hybrid.last_used == ("tfidf", "glove", "sbert") and not hybrid.last_skipped
+    np.testing.assert_allclose(hybrid.last_components["glove"], parts[1])  # raw cosines kept for display
+
+
+def test_hybrid_without_normalization_is_the_plain_weighted_average(corpus):
+    tfidf, glove, sbert = make_hybrid(corpus).parts
+    hybrid = HybridMatcher(corpus, tfidf, glove, sbert, weights=(2, 1, 1), normalization="none").fit()
+    expected = 0.5 * tfidf.similarities(JOB) + 0.25 * glove.similarities(JOB) + 0.25 * sbert.similarities(JOB)
     np.testing.assert_allclose(hybrid.similarities(JOB), expected, rtol=1e-6)
 
 
-def test_hybrid_averages_only_the_methods_that_can_read_the_query(corpus):
+def test_hybrid_weights_are_validated_and_rescaled(corpus):
+    tfidf, glove, sbert = make_hybrid(corpus).parts
+    assert HybridMatcher(corpus, tfidf, glove, sbert, weights=(1, 0, 1)).weights == (0.5, 0.0, 0.5)
+    for bad in [(0, 0, 0), (1, -1, 1), (1, 2), (float("nan"), 1, 1)]:
+        with pytest.raises(ValueError):
+            HybridMatcher(corpus, tfidf, glove, sbert, weights=bad)
+    with pytest.raises(ValueError):
+        HybridMatcher(corpus, tfidf, glove, sbert, normalization="zscore")
+
+
+def test_hybrid_with_zero_weight_ignores_that_method(corpus):
+    tfidf, glove, sbert = make_hybrid(corpus).parts
+    hybrid = HybridMatcher(corpus, tfidf, glove, sbert, weights=(0, 0, 1)).fit()
+    np.testing.assert_allclose(hybrid.similarities(JOB), minmax_normalize(sbert.similarities(JOB)))
+    assert hybrid.last_used == ("sbert",)
+
+
+def test_hybrid_reports_methods_that_could_not_read_the_query(corpus):
     hybrid = make_hybrid(corpus)
     tfidf, glove, sbert = hybrid.parts
     query = "astronaut"  # in no resume (TF-IDF) and not in the fake GloVe table, so both raise EmptyQueryError
     for part in (tfidf, glove):
         with pytest.raises(EmptyQueryError):
             part.similarities(query)
-    np.testing.assert_allclose(hybrid.similarities(query), sbert.similarities(query))
+    np.testing.assert_allclose(hybrid.similarities(query), minmax_normalize(sbert.similarities(query)))
+    assert hybrid.last_used == ("sbert",) and set(hybrid.last_skipped) == {"tfidf", "glove"}
     assert len(hybrid.match(query, top_k=2)) == 2
+
+
+def test_minmax_normalize_handles_constant_scores():
+    np.testing.assert_allclose(minmax_normalize(np.array([0.2, 0.6, 0.4])), [0.0, 1.0, 0.5])
+    np.testing.assert_allclose(minmax_normalize(np.array([0.7])), [0.7])  # one resume: nothing to rescale
+    np.testing.assert_allclose(minmax_normalize(np.array([1.5, 1.5])), [1.0, 1.0])
 
 
 def test_create_hybrid_matcher_and_status(monkeypatch, corpus, tmp_path):

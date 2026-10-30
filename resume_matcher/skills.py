@@ -309,7 +309,11 @@ _EXACT_AFTER = r"(?![A-Za-z0-9+#&'\-]|\.[A-Za-z])"
 def normalize_for_matching(text: object) -> str:
     """Lowercase ``text`` and turn word separators into spaces, keeping its length unchanged."""
     text = _as_text(text)
-    lowered = "".join(ch.lower() if len(ch.lower()) == 1 else ch for ch in text)
+    lowered = text.lower()
+    # Character-by-character only when needed: some characters lower-case to two ("İ" -> "i̇"),
+    # which would shift match positions, and Greek capital sigma lower-cases by context.
+    if len(lowered) != len(text) or "Σ" in text:
+        lowered = "".join(ch.lower() if len(ch.lower()) == 1 else ch for ch in text)
     return lowered.translate(_SEPARATORS)
 
 
@@ -329,6 +333,15 @@ class Requirement:
     name: str
     pattern: re.Pattern | None = None  # case-insensitive aliases, run on normalize_for_matching(text)
     exact_pattern: re.Pattern | None = None  # exact-case spellings, run on the original text
+    # Literal text every match must contain: the first word of each alias (normalized) and each
+    # exact spelling. A quick substring test skips the regex when none of them occurs.
+    alias_needles: tuple[str, ...] = ()
+    exact_needles: tuple[str, ...] = ()
+
+    def _may_match(self, text: str, normalized: str) -> tuple[bool, bool]:
+        alias = self.pattern is not None and (not self.alias_needles or any(n in normalized for n in self.alias_needles))
+        exact = self.exact_pattern is not None and (not self.exact_needles or any(n in text for n in self.exact_needles))
+        return alias, exact
 
     def spans(self, text: str, normalized: str) -> list[tuple[int, int]]:
         found = []
@@ -338,13 +351,21 @@ class Requirement:
             found += [m.span() for m in self.exact_pattern.finditer(text)]
         return found
 
+    def first_span(self, text: str, normalized: str) -> tuple[int, int] | None:
+        """The earliest match (like min(spans(...))), without collecting every match."""
+        alias, exact = self._may_match(text, normalized)
+        found = []
+        if alias and (m := self.pattern.search(normalized)):
+            found.append(m.span())
+        if exact and (m := self.exact_pattern.search(text)):
+            found.append(m.span())
+        return min(found) if found else None
+
     def found_in(self, text: str, normalized: str | None = None) -> bool:
         if normalized is None:
             normalized = normalize_for_matching(text)
-        return bool(
-            (self.pattern is not None and self.pattern.search(normalized))
-            or (self.exact_pattern is not None and self.exact_pattern.search(text))
-        )
+        alias, exact = self._may_match(text, normalized)
+        return bool((alias and self.pattern.search(normalized)) or (exact and self.exact_pattern.search(text)))
 
 
 def _make_requirement(name: str, aliases: tuple[str, ...] = (), exact: tuple[str, ...] = ()) -> Requirement:
@@ -353,7 +374,8 @@ def _make_requirement(name: str, aliases: tuple[str, ...] = (), exact: tuple[str
         pattern = re.compile("|".join(f"(?:{_alias_pattern(a)})" for a in aliases))
     if exact:
         exact_pattern = re.compile(_EXACT_BEFORE + "(?:" + "|".join(re.escape(e) for e in exact) + ")" + _EXACT_AFTER)
-    return Requirement(name, pattern, exact_pattern)
+    alias_needles = tuple(dict.fromkeys(w[0] for a in aliases if (w := normalize_for_matching(a).split())))
+    return Requirement(name, pattern, exact_pattern, alias_needles, tuple(exact))
 
 
 @cache

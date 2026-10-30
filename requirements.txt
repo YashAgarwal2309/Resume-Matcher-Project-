@@ -10,10 +10,16 @@ numpy>=1.26,<3
 scikit-learn>=1.4,<2
 streamlit>=1.49,<2
 pypdf>=5,<7          # reads uploaded PDF resumes (tested with 6.21.2)
+scipy>=1.10,<2       # sparse matrices (TF-IDF, GloVe) and Kendall's tau (tested with 1.18.1)
+altair>=5,<7         # dashboard charts (tested with 6.3.0)
 
 # Sentence-BERT (optional: the app reports it as unavailable if this is not installed).
 # Installs PyTorch (several hundred MB). Only version 6.x has been tested.
 sentence-transformers>=6,<7
+
+# Slide deck builder only (presentation/build_presentation.py); the app does not need these.
+python-pptx>=1.0,<2  # tested with 1.0.2
+Pillow>=10           # tested with 13.0.0
 
 # Tests
 pytest>=8

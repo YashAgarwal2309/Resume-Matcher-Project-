@@ -238,7 +238,8 @@ def test_strong_match_threshold_is_configurable(app):
 
 def test_insights_tab_draws_charts_from_the_run(app):
     match_tfidf(app)
-    assert len(app.get("vega_lite_chart")) == 4  # scores, distribution, requirements, coverage
+    # scores, distribution, similarity vs coverage, requirements per resume, coverage per requirement
+    assert len(app.get("vega_lite_chart")) == 5
 
 
 @pytest.mark.parametrize("count", [2, 3, 4, 5])
@@ -353,3 +354,80 @@ def test_uploaded_resumes_are_not_cached_on_disk():
 
     assert get_settings().cache_dir is not None  # evaluate.py may cache the public datasets
     assert app_module.matcher_settings(get_settings()).cache_dir is None  # the app never does
+
+
+# ---- All resumes ranked, result limits, pages, coverage
+
+def many_resumes(n):
+    from tests.test_tfidf import synthetic_resumes
+
+    return [(name, text.encode(), "text/plain") for name, text in synthetic_resumes(n)]
+
+
+def ranking_head(at):
+    return next(m.value for m in at.markdown if "match the filters" in m.value)
+
+
+def test_every_uploaded_resume_is_ranked_and_limits_only_change_the_view(app):
+    match_tfidf(app, files=many_resumes(60), job="Required: Python, Django, PostgreSQL, Docker and AWS.")
+    kpis = metrics(app)
+    assert kpis["Resumes uploaded"] == "60" and kpis["Resumes processed"] == "60"
+    assert kpis["Failed files"] == "0" and kpis["Candidates ranked"] == "60"
+    assert "60 resumes ranked" in ranking_head(app) and "showing 30" in ranking_head(app)  # Top 30 by default
+    assert app.dataframe[0].value["rank"].tolist() == list(range(1, 26))  # page 1 of 2, 25 per page
+    app.number_input(key="rank_page_2").set_value(2).run()
+    assert app.dataframe[0].value["rank"].tolist() == list(range(26, 31))
+    app.button_group(key="rank_limit").set_value("All").run()
+    assert "showing 60" in ranking_head(app)
+    app.number_input(key="rank_page_3").set_value(3).run()
+    assert app.dataframe[0].value["rank"].tolist() == list(range(51, 61))
+    assert len(compare_select(app).options) == 60  # every ranked resume can be compared
+
+
+def test_minimum_score_filter_is_optional_and_never_unranks(app):
+    match_tfidf(app, files=many_resumes(20), job="Required: Python, Django, PostgreSQL, Docker and AWS.")
+    app.button_group(key="rank_limit").set_value("All").run()
+    everyone = app.dataframe[0].value
+    assert len(everyone) == 20 and (everyone["score"] == 0).any()  # zero-similarity resumes are kept
+    app.number_input(key="rank_min_score").set_value(10.0).run()
+    shown = app.dataframe[0].value
+    assert (shown["score"] >= 10).all() and len(shown) < 20
+    assert metrics(app)["Candidates ranked"] == "20"
+
+
+def test_failed_and_duplicate_files_are_counted(app):
+    files = [*resume_files(), ("broken.pdf", b"not a pdf", "application/pdf"), ("copy.txt", resume_files()[0][1], "text/plain")]
+    match_tfidf(app, files=files)
+    kpis = metrics(app)
+    assert kpis["Resumes uploaded"] == "7" and kpis["Failed files"] == "1"
+    assert kpis["Resumes processed"] == "5" and kpis["Candidates ranked"] == "5"
+
+
+def test_docx_resumes_are_read(app):
+    from tests.conftest import make_docx
+
+    docx = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    match_tfidf(app, files=[("nurse.docx", make_docx("Registered nurse", "Hospital patient care"), docx),
+                            ("chef.docx", make_docx("Head chef managing a kitchen"), docx)],
+                job="Hospital nurse for patient care")
+    assert app.dataframe[0].value["resume_id"].iloc[0] == "nurse.docx"
+
+
+def test_similarity_and_coverage_are_shown_separately(app):
+    files = [("flask.txt", b"Python developer building Flask APIs with MySQL", "text/plain"),
+             ("django.txt", b"Python developer building Django APIs with PostgreSQL. 5 years of experience", "text/plain"),
+             ("chef.txt", b"Head chef managing a kitchen", "text/plain")]
+    match_tfidf(app, files=files, job="Required: Python, Django and PostgreSQL. 3+ years of experience.")
+    table = app.dataframe[0].value.set_index("resume_id")
+    assert table.loc["django.txt", "coverage"] == 100.0
+    assert table.loc["flask.txt", "coverage"] == 25.0  # Python only; Flask is related to Django, not a match
+    assert list(table.loc["flask.txt", "related"]) == ["Django", "PostgreSQL"]
+    assert table.loc["chef.txt", "coverage"] == 0.0 and table.loc["chef.txt", "score"] == 0.0
+    assert "Average coverage" in metrics(app)
+
+
+def test_fresh_run_is_not_marked_as_outdated(app):
+    match_tfidf(app)
+    assert not any("changed after this ranking" in i.value for i in app.info)
+    app.selectbox(key="method").select("hybrid").run()  # Hybrid has weight inputs; switching marks the run outdated
+    assert any("changed after this ranking" in i.value for i in app.info)
